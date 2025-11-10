@@ -1,0 +1,32 @@
+# Environnements virtuels → restent locaux, jamais sur GitHub
+venv/
+.venv/
+env/
+ENV/
+
+# Fichiers de test
+fichiers-test/
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Éditeurs
+.vscode/
+.idea/
+
+# Système
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temporaires
+*.tmp
+*.log
+*.bak
+
+# Credentials Adobe → NE JAMAIS COMMIT
+pdfservices-api-credentials.json
+utils/pdfservices-api-credentials.json
