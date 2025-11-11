@@ -1,15 +1,11 @@
-# -------------------------------------------------
-# core/syllables.py – VERSION INVINCIBLE (APOSTROPHES + ACCENTS + TOUT)
-# -------------------------------------------------
+# core/syllables.py
 import re
 from docx.shared import RGBColor
 
 COUL_SYLL = [RGBColor(220, 20, 60), RGBColor(30, 144, 255)]
 
-# Regex pour mots avec apostrophes
 WORD_PATTERN = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ'’'-]+")
 
-# Normalisation
 ACCENT_MAP = str.maketrans({
     'à': 'a', 'á': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a', 'å': 'a',
     'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e',
@@ -30,7 +26,6 @@ ACCENT_MAP = str.maketrans({
 def normalize(word: str) -> str:
     return word.lower().translate(ACCENT_MAP)
 
-# Fallback syllabation manuelle (ultra-robuste)
 def split_syllables(word_norm: str):
     vowels = "aeiouy"
     parts = []
@@ -57,13 +52,6 @@ def apply_syllables(doc):
         if hasattr(shape, 'text_frame') and shape.text_frame:
             containers.append(shape.text_frame)
 
-    # Import sécurisé
-    try:
-        from lirecouleur.word import syllables as lc_syllables
-        use_lc = True
-    except:
-        use_lc = False
-
     for container in containers:
         for p in container.paragraphs:
             if not p.text.strip():
@@ -76,39 +64,22 @@ def apply_syllables(doc):
             while i < len(texte):
                 c = texte[i]
 
-                # Conserver ponctuation, espaces, etc.
                 if c.isspace() or c in ".,;:!?()[]{}«»“”‘’'’/\\-–—*+=<>@#$%^&~":
                     p.add_run(c)
                     i += 1
                     continue
 
-                # Mot avec apostrophes
                 match = WORD_PATTERN.match(texte[i:])
                 if match:
                     mot = match.group()
                     mot_norm = normalize(mot)
+                    parts = split_syllables(mot_norm)
 
-                    # Essayer lirecouleur
-                    if use_lc:
-                        try:
-                            sylls = lc_syllables(mot_norm)
-                            if sylls and all(isinstance(s, str) for s in sylls):
-                                parts = sylls
-                            else:
-                                parts = split_syllables(mot_norm)
-                        except:
-                            parts = split_syllables(mot_norm)
-                    else:
-                        parts = split_syllables(mot_norm)
-
-                    # Appliquer partie par partie
                     pos = 0
                     for part in parts:
                         part_len = len(part)
-                        # Trouver dans le mot original
                         orig_part = mot[pos:pos + part_len]
                         if normalize(orig_part) != part:
-                            # Fallback caractère
                             orig_part = mot[pos:pos + 1]
                             pos += 1
                         else:

@@ -1,6 +1,4 @@
-# -----------------
-# core/formatter.py 
-# -----------------
+# core/formatter.py
 import os
 import platform
 import subprocess
@@ -12,11 +10,11 @@ from ui.interface import update_progress
 
 from .syllables import apply_syllables
 from .mute_letters import apply_mute_letters
+from .syllables_mute import apply_syllables_mute
 from .numbers_multicolor import apply_multicolor_numbers
 from .numbers_position import apply_position_numbers
 from .a3_enlarger import apply_a3_format
 from .utils import apply_font_consistently, apply_spacing_and_line_spacing
-
 
 def format_document(filepath: str):
     update_progress(10, "Ouverture du document...")
@@ -37,17 +35,16 @@ def format_document(filepath: str):
     apply_font_consistently(doc, police, taille_pt)
     apply_spacing_and_line_spacing(doc, espacement, interlignes)
 
-    # SYLLABES D'ABORD
-    if syllabes_on:
-        update_progress(40, "Coloration syllabique rouge/bleu...")
+    if syllabes_on and muettes_on:
+        update_progress(50, "Coloration syllabique + grisage muettes...")
+        apply_syllables_mute(doc)
+    elif syllabes_on:
+        update_progress(50, "Coloration syllabique rouge/bleu...")
         apply_syllables(doc)
-
-    # MUETTES ENSUITE (par-dessus, sans écraser la couleur)
-    if muettes_on:
-        update_progress(60, "Grisage des lettres muettes (sans écraser la couleur)...")
+    elif muettes_on:
+        update_progress(50, "Grisage des lettres muettes...")
         apply_mute_letters(doc)
 
-    # NOMBRES
     if multicolore_on:
         update_progress(70, "Coloration multicolore...")
         apply_multicolor_numbers(doc)
@@ -55,12 +52,10 @@ def format_document(filepath: str):
         update_progress(70, "Coloration par position...")
         apply_position_numbers(doc)
 
-    # A3
     if format_a3:
         update_progress(80, "Format A3...")
         apply_a3_format(doc, agrandir_objets)
 
-    # SAUVEGARDE
     update_progress(90, "Sauvegarde...")
     dossier_dys = os.path.join(os.path.dirname(filepath), "DYS")
     os.makedirs(dossier_dys, exist_ok=True)

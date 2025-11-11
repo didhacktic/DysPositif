@@ -30,3 +30,8 @@ Desktop.ini
 # Credentials Adobe → NE JAMAIS COMMIT
 pdfservices-api-credentials.json
 utils/pdfservices-api-credentials.json
+
+# Dys’Positif logs
+.cache/
+~/.cache/dys_positif/
+dys_log.txt
