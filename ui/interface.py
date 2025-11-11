@@ -7,23 +7,20 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
 from config.settings import options
 
-# Variables globales pour progression (accessibles depuis tous les modules)
+# Variables globales pour progression
 progress_bar = None
 progress_text = None
 
 def show_error(title: str, message: str):
-    """Affiche une erreur dans la fenêtre + terminal"""
     print(f"[ERREUR GUI] {title}: {message}")
     messagebox.showerror(title, message)
     update_progress(0, f"ERREUR : {message}")
 
 def show_info(title: str, message: str):
-    """Affiche une info dans la fenêtre"""
     print(f"[INFO GUI] {title}: {message}")
     messagebox.showinfo(title, message)
 
 def update_progress(value: int, text: str):
-    """Met à jour barre + texte + scroll automatique"""
     global progress_bar, progress_text
     if progress_bar:
         progress_bar['value'] = value
@@ -40,14 +37,8 @@ def update_progress(value: int, text: str):
 root = None
 
 def create_interface(main_root, callback):
-    """
-    Crée toute l'interface graphique
-    main_root : Tk() passé depuis main.py
-    callback : fonction select_file
-    """
     global root, progress_bar, progress_text
     root = main_root
-
     root.title("Dys’Positif – Adaptation pour la dyslexie")
     root.geometry("860x1120")
     root.configure(bg="#f5f5f5")
@@ -59,8 +50,8 @@ def create_interface(main_root, callback):
         'taille': tk.IntVar(value=16),
         'interligne': tk.BooleanVar(value=True),
         'espacement': tk.BooleanVar(value=True),
-        'syllabes': tk.BooleanVar(value=True),
-        'griser_muettes': tk.BooleanVar(value=True),
+        'syllabes': tk.BooleanVar(value=False),  # DÉSACTIVÉ PAR DÉFAUT
+        'griser_muettes': tk.BooleanVar(value=False),  # DÉSACTIVÉ PAR DÉFAUT
         'multicolore': tk.BooleanVar(value=False),
         'position': tk.BooleanVar(value=False),
         'format': tk.StringVar(value="A3"),
@@ -98,7 +89,7 @@ def create_interface(main_root, callback):
         font=("Helvetica", 11)
     ).pack(anchor="w", pady=(0, 10))
 
-    # Taille
+   # Taille
     taille_frame = tk.Frame(params_frame, bg="white")
     taille_frame.pack(anchor="w", pady=(0, 10))
     tk.Label(taille_frame, text="Taille :", font=("Helvetica", 12, "bold"), bg="white").pack(side="left")
@@ -160,7 +151,6 @@ def create_interface(main_root, callback):
     # === BARRE DE PROGRESSION ===
     progress_bar = ttk.Progressbar(root, mode="determinate", maximum=100, length=680)
     progress_bar.pack(pady=15)
-
     progress_text = scrolledtext.ScrolledText(
         root,
         height=6,

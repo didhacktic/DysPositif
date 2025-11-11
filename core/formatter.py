@@ -2,23 +2,18 @@
 import os
 import platform
 import subprocess
-import sys  # Ajouté pour platform.system() et os.startfile
+import tempfile
 from docx import Document
-from docx.shared import Mm
 
 from config.settings import options
 from ui.interface import update_progress
 
 from .syllables import apply_syllables
 from .mute_letters import apply_mute_letters
-from .syllables_and_mute import apply_syllables_and_mute  # Nouveau module combiné
-from .numbers_multicolor import apply_multicolor_numbers
-from .numbers_position import apply_position_numbers
-from .a3_enlarger import apply_a3_format
 from .utils import apply_font_consistently, apply_spacing_and_line_spacing
 
 def format_document(filepath: str):
-    update_progress(10, "Ouverture du document...")
+    update_progress(10, "Ouverture...")
     doc = Document(filepath)
 
     police = options['police'].get()
@@ -27,36 +22,43 @@ def format_document(filepath: str):
     interlignes = options['interligne'].get()
     syllabes_on = options['syllabes'].get()
     muettes_on = options['griser_muettes'].get()
-    multicolore_on = options['multicolore'].get()
-    position_on = options['position'].get()
-    format_a3 = options['format'].get() == "A3"
-    agrandir_objets = options['agrandir_objets'].get()
 
-    update_progress(20, "Police + taille...")
     apply_font_consistently(doc, police, taille_pt)
     apply_spacing_and_line_spacing(doc, espacement, interlignes)
 
-    if syllabes_on and muettes_on:
-        update_progress(50, "Coloration syllabique + grisage muettes...")
-        apply_syllables_and_mute(doc)
-    elif syllabes_on:
-        update_progress(50, "Coloration syllabique rouge/bleu...")
+    # --- SYLLABES SEULES ---
+    if syllabes_on and not muettes_on:
+        update_progress(50, "Coloration syllabique...")
         apply_syllables(doc)
-    elif muettes_on:
-        update_progress(50, "Grisage des lettres muettes...")
+
+    # --- MUETTES SEULES ---
+    elif muettes_on and not syllabes_on:
+        update_progress(50, "Grisage muettes...")
         apply_mute_letters(doc)
 
-    if multicolore_on:
-        update_progress(70, "Coloration multicolore...")
-        apply_multicolor_numbers(doc)
-    if position_on:
-        update_progress(70, "Coloration par position...")
-        apply_position_numbers(doc)
+    # --- LES DEUX : SYLLABES → TMP → MUETTES ---
+    elif syllabes_on and muettes_on:
+        update_progress(50, "Étape 1/2 : Syllabes...")
+        temp_fd, temp_path = tempfile.mkstemp(suffix=".docx")
+        os.close(temp_fd)
+        doc.save(temp_path)
 
-    if format_a3:
-        update_progress(80, "Format A3...")
-        apply_a3_format(doc, agrandir_objets)
+        # Appliquer syllabes sur doc original
+        apply_syllables(doc)
 
+        # Charger le doc modifié et appliquer muettes
+        update_progress(75, "Étape 2/2 : Muettes...")
+        temp_doc = Document(temp_path)
+        apply_mute_letters(temp_doc)
+        temp_doc.save(temp_path)
+
+        # Remplacer le doc original
+        doc._element.body._element = temp_doc._element.body._element
+
+        # Nettoyage
+        os.unlink(temp_path)
+
+    # --- SAUVEGARDE ---
     update_progress(90, "Sauvegarde...")
     dossier_dys = os.path.join(os.path.dirname(filepath), "DYS")
     os.makedirs(dossier_dys, exist_ok=True)
@@ -68,12 +70,11 @@ def format_document(filepath: str):
         i += 1
 
     doc.save(output)
-    update_progress(100, f"Terminé ! → DYS/{os.path.basename(output)}")
+    update_progress(100, f"Terminé → {os.path.basename(output)}")
 
-    sys_platform = platform.system()
-    if sys_platform == "Linux":
+    if platform.system() == "Linux":
         subprocess.call(["xdg-open", output])
-    elif sys_platform == "Darwin":
+    elif platform.system() == "Darwin":
         subprocess.call(["open", output])
     else:
         os.startfile(output)

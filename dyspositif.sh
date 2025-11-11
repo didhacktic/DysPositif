@@ -12,7 +12,9 @@ if [ ! -d "$VENV" ]; then
     echo "Mise à jour de pip..."
     pip install --upgrade pip
     echo "Installation des dépendances..."
-    pip install python-docx lxml Pillow pdfservices-sdk pylirecouleur
+    pip install python-docx lxml Pillow pdfservices-sdk pylirecouleur spacy
+    echo "Téléchargement du modèle spaCy MOYEN (fr_core_news_md)..."
+    python -m spacy download fr_core_news_md
 else
     source "$VENV/bin/activate"
 fi

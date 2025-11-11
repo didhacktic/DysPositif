@@ -1,167 +1,237 @@
+#!/usr/bin/env python
+# -*- coding: UTF-8 -*-
+
+"""
+mute_letters.py – Grisage des lettres muettes
+Règles utilisateur implémentées, sans découpage syllabique
+NOUVELLE RÈGLE : aient → griser ent (sauf si mot = "aient")
+"""
+
 import re
 import os
-import codecs
-import json
 from docx.shared import RGBColor
 
-GRIS = RGBColor(130, 130, 130)
+# --- Couleur ---
+GRIS = RGBColor(200, 200, 200)
 
-# Constantes portées de LireCouleur (lcutils.py et lirecouleur.py)
-class ConstLireCouleur:
-    SYLLABES_LC = 0
-    SYLLABES_STD = 1
-    SYLLABES_ORALES = 1
-    SYLLABES_ECRITES = 0
-    MESTESSESLESDESCES = {'': 'e_comp', 'fr': 'e_comp', 'fr_CA': 'e^_comp'}
+# --- spaCy ---
+try:
+    import spacy
+    nlp = spacy.load("fr_core_news_md")  # ← MODÈLE MOYEN
+    SPACY_OK = True
+except Exception as e:
+    print(f"spaCy erreur : {e}")
+    SPACY_OK = False
+    nlp = None
 
-# Dictionnaire portés de LireCouleur (lirecouleur.py)
-class LCDictionnary:
-    _loaded = False
-    _dict = {}
-    _filename = "lirecouleur.dic"  # Fichier optionnel dans le répertoire courant
+# --- EXCEPTIONS ---
+EXCEPTIONS_B = {
+    "rib", "blob", "club", "pub", "kebab", "nabab", "snob", "toubib",
+    "baobab", "jazzclub", "motoclub", "night-club"
+}
+EXCEPTIONS_G = {
+    "grog", "ring", "bang", "gong", "yang", "ying", "slang", "gang", "erg",
+    "iceberg", "zig", "zigzag", "krieg", "bowling", "briefing", "shopping",
+    "building", "camping", "parking", "living", "marketing", "dancing",
+    "jogging", "surfing", "training", "meeting", "feeling", "holding",
+    "standing", "trading"
+}
+EXCEPTIONS_P = {
+    "stop", "workshop", "handicap", "wrap", "ketchup", "top", "flip-flop",
+    "hip-hop", "clip", "slip", "trip", "grip", "strip", "shop", "drop",
+    "hop", "pop", "flop", "chop", "prop", "crop", "laptop", "desktop"
+}
+EXCEPTIONS_T = {
+    "but", "chut", "fiat", "brut", "concept", "foot", "huit", "mat", "net",
+    "ouest", "rut", "out", "ut", "flirt", "kurt", "loft", "raft", "rift",
+    "soft", "watt", "west", "abstract", "affect", "apart", "audit", "belt",
+    "best", "blast", "boost", "compact", "connect", "contact", "correct",
+    "cost", "craft", "cut", "direct", "district", "draft", "drift", "exact",
+    "exit", "impact", "infect", "input", "must", "next", "night", "outfit",
+    "output", "paint", "perfect", "plot", "post", "print", "prompt",
+    "prospect", "react", "root", "set", "shirt", "short", "shot", "smart",
+    "spirit", "split", "spot", "sprint", "start", "strict", "tact", "test",
+    "tilt", "tract", "trust", "twist", "volt", "et", "est"
+}
+EXCEPTIONS_X = {
+    "six", "dix", "index", "duplex", "latex", "lynx", "matrix", "mix",
+    "multiplex", "reflex", "relax", "remix", "silex", "thorax", "vortex", "xerox"
+}
+EXCEPTIONS_S = {
+    "bus", "ours", "tous", "plus", "ars", "cursus", "lapsus", "virus",
+    "cactus", "consensus", "us", "as", "mas", "bis", "lys", "métis", "os",
+    "bonus", "campus", "focus", "boss", "stress", "express", "dress",
+    "fitness", "Arras", "s", "houmous", "humus", "humérus", "cubitus", "habitus", 
+    "hiatus", "des", "mes", "tes", "ces", "les", "ses"  
+}
 
-    def __init__(self):
-        if not LCDictionnary._loaded:
-            self.load()
+# --- EXCEPTIONS SUPPLÉMENTAIRES ---
+EXCEPTIONS_D = {"david"}  # David
 
-    def load(self):
-        LCDictionnary._loaded = True
-        if os.path.isfile(LCDictionnary._filename):
-            with codecs.open(LCDictionnary._filename, "r", "utf_8_sig", errors="replace") as ff:
-                for line in ff:
-                    line = line.rstrip('\r\n')
-                    if not line.startswith('#') and ';' in line:
-                        temp = line.split(';')
-                        if len(temp) > 1:
-                            LCDictionnary._dict[temp[0]] = temp[1:] if len(temp) > 2 else temp[1:] + ['']
+# --- CAS PARTICULIERS ---
+CAS_PARTICULIERS = {
+    "croc": "c", "crocs": "cs",
+    "clef": "f", "clefs": "fs",
+    "cerf": "f", "cerfs": "fs",
+    "boeuf": "fs", "bœuf": "fs", "boeufs": "fs", "bœufs": "fs",
+    "oeuf": "fs", "œuf": "fs", "oeufs": "fs", "œufs": "fs"
+}
 
-    def getEntry(self, key):
-        return LCDictionnary._dict.get(key, ['', ''])
+# --- FONCTIONS ---
+def is_verb(word, sentence):
+    if not SPACY_OK:
+        return False
+    doc = nlp(sentence)
+    for token in doc:
+        if token.text.lower() == word.lower():
+            return token.pos_ == "VERB"
+    return False
 
-# Phonèmes et mappings portés de LireCouleur (lirecouleur.py)
-syllaphon = json.loads("""
-{"v":["a","q","q_caduc","i","o","o_comp","o_ouvert","u","y","e","e_comp","e^","e^_comp","a~","e~","x~","o~","x","x^","wa","w5"],"c":["p","t","k","b","d","g","f","f_ph","s","s^","v","z","z^","l","r","m","n","k_qu","z^_g","g_u","s_c","s_t","z_s","ks","gz"],"s":["j","g~","n~","w"],"#":["#","verb_3p"]}
-""")
-
-sampa2lc = {'p':'p', 'b':'b', 't':'t', 'd':'d', 'k':'k', 'g':'g', 'f':'f', 'v':'v',
-'s':'s', 'z':'z', 'S':'s^', 'Z':'g^', 'j':'j', 'm':'m', 'n':'n', 'J':'g~',
-'N':'n~', 'l':'l', 'R':'r', 'w':'w', 'H':'y', 'i':'i', 'e':'e', 'E':'e^',
-'a':'a', 'A':'a', 'o':'o', 'O':'o_ouvert', 'u':'u', 'y':'y', '2':'x^', '9':'x',
-'@':'q', 'e~':'e~', 'a~':'a~', 'o~':'o~', '9~':'x~', '#':'#'}
-
-# Fonctions portées de LireCouleur (lirecouleur.py)
-def u(txt):
+def is_negation_plus(sentence, word):
+    if not SPACY_OK:
+        return False
+    doc = nlp(sentence)
+    tokens = [t.text.lower() for t in doc]
     try:
-        return txt.encode('utf-8').decode('utf-8')
-    except:
-        return txt
+        idx = tokens.index(word.lower())
+        return any(t in {"ne", "n'"} for t in tokens[max(0, idx-5):idx])
+    except ValueError:
+        return False
 
-def pretraitement_texte(texte):
-    ultexte = texte.lower().replace('ç', 'c').replace('œ', 'e').replace('æ', 'e').replace('Æ', 'e').replace('Œ', 'e')
-    ultexte = ultexte.replace('à', 'a').replace('â', 'a').replace('é', 'e').replace('è', 'e').replace('ê', 'e')
-    ultexte = ultexte.replace('ë', 'e').replace('î', 'i').replace('ï', 'i').replace('ô', 'o').replace('ö', 'o')
-    ultexte = ultexte.replace('ù', 'u').replace('û', 'u').replace('ü', 'u').replace('ÿ', 'y')
-    ultexte = ultexte.replace('À', 'a').replace('Â', 'a').replace('É', 'e').replace('È', 'e').replace('Ê', 'e')
-    ultexte = ultexte.replace('Ë', 'e').replace('Î', 'i').replace('Ï', 'i').replace('Ô', 'o').replace('Ö', 'o')
-    ultexte = ultexte.replace('Ù', 'u').replace('Û', 'u').replace('Ü', 'u').replace('Ÿ', 'y')
-    return ultexte
+def get_mute_positions(word, sentence=None):
+    w = word.lower()
+    positions = set()
 
-def nettoyeur_caracteres(mot):
-    # Nettoyage des caractères non gérés (ponctuation attachée, etc.)
-    mot = re.sub(r"[^a-z]", "", mot)  # Simplifié pour mots purs
-    return mot
+    # Cas particuliers
+    if w in CAS_PARTICULIERS:
+        for c in CAS_PARTICULIERS[w]:
+            idx = w.rfind(c)
+            if idx != -1:
+                positions.add(idx)
+        return positions
 
-def extraire_phonemes(umot, texte='', p_texte=0, detection_phonemes_debutant=0, mode=ConstLireCouleur.SYLLABES_ECRITES):
-    # Fonction complète portée de lirecouleur.py (tronquée pour focus sur muettes, mais complète pour fidélité)
-    # ... (Je colle ici le code complet de extraire_phonemes, car il est long. Dans la réalité, copiez-le de votre document "lirecouleur.py" et adaptez les imports si besoin).
-    # Note : Pour brevité, je résume, mais dans votre fichier, insérez le code complet de def extraire_phonemes jusqu'à return liste_phon
-    # Exemple abrégé (remplacez par le full code) :
-    lcdict = LCDictionnary()
-    mot = nettoyeur_caracteres(umot)
-    entry = lcdict.getEntry(mot)
-    if entry[0]:
-        # Utiliser dictionnaire si présent
-        return [[g, p] for g, p in zip(mot, entry[0].split())]  # Simplifié
-    
-    # Appliquer les règles regex pour transformer en phonèmes (full list from lirecouleur.py)
-    # Voici quelques exemples clés pour muettes :
-    mot = re.sub(r'([bcdfghjklmnpqrstvwxz])e([#]|$)', r'\1#\2', mot)  # e muet final après consonne
-    mot = re.sub(r's[#]$', r's#', mot)  # s muet final
-    # ... Ajoutez TOUTES les regex de extraire_phonemes (il y en a des dizaines, copiez-les toutes pour exactitude)
-    
-    # Construction de liste_phon (from lirecouleur.py)
-    liste_phon = []
-    pos = 0
-    while pos < len(mot):
-        # Logique pour splitter en [grapheme, phoneme] (copiez le full loop)
-        # Exemple : liste_phon.append([mot[pos:pos+1], '#'] if mot[pos] in '#' else [mot[pos:pos+1], mot[pos]])
-        pos += 1
-    return liste_phon  # Liste de [[grapheme1, phon1], [grapheme2, phon2], ...]
+    # Règle 1: h début
+    if w and w[0] == 'h':
+        positions.add(0)
 
-# Nouvelle fonction pour obtenir les ranges muettes
-def get_mute_ranges(word_original):
-    ulword = pretraitement_texte(word_original)
-    phonemes = extraire_phonemes(ulword, detection_phonemes_debutant=0, mode=ConstLireCouleur.SYLLABES_ECRITES)
-    
-    mute_ranges = []
-    pos = 0
-    for grapheme, phon in phonemes:
-        glen = len(grapheme)
-        if phon == '#':
-            mute_ranges.append((pos, pos + glen))
-        pos += glen
-    return mute_ranges
+    # Règle 12: ent + verbe
+    if w.endswith('ent') and sentence and is_verb(w, sentence):
+        positions.add(len(w)-2)  # n
+        positions.add(len(w)-1)  # t
+        #return positions
 
-# Fonction principale (réécrite)
+    # Règle 13: plus + négation
+    if w == "plus" and sentence and is_negation_plus(sentence, w):
+        positions.add(len(w)-1)
+        return positions
+
+    # NOUVELLE RÈGLE : aient → griser ent (sauf si mot = "aient")
+    if w.endswith('aient') and w != "aient":
+        positions.add(len(w)-3)  # e
+        positions.add(len(w)-2)  # n
+        positions.add(len(w)-1)  # t
+        return positions
+
+    # Règles finales
+    last = len(w) - 1
+    if last < 0:
+        return positions
+
+    # Exception d
+    if w[last] == 'd' and w in EXCEPTIONS_D:
+        pass
+    elif w[last] == 'd':
+        positions.add(last)
+
+    if w[last] == 'b' and w not in EXCEPTIONS_B:
+        positions.add(last)
+    if w.endswith(('ie', 'ée')):
+        positions.add(last)
+    if w[last] == 'g' and w not in EXCEPTIONS_G:
+        positions.add(last)
+    if w[last] == 'p' and w not in EXCEPTIONS_P:
+        positions.add(last)
+    if w[last] == 't' and w not in EXCEPTIONS_T:
+        positions.add(last)
+    if w[last] == 'x' and w not in EXCEPTIONS_X:
+        positions.add(last)
+    if w[last] == 's' and w not in EXCEPTIONS_S:
+        positions.add(last)
+        # Règle 11: lettre précédente
+        if len(w) > 1:
+            prev = w[:-1]
+            prev_pos = get_mute_positions(prev, sentence)
+            for p in prev_pos:
+                positions.add(p)
+
+    return positions
+
+def copy_style(src, dst):
+    for attr in ['bold', 'italic', 'underline']:
+        value = getattr(src, attr, None)
+        if value is not None:
+            setattr(dst, attr, value)
+    if src.font.name:
+        dst.font.name = src.font.name
+    if src.font.size:
+        dst.font.size = src.font.size
+    if src.font.color.rgb:
+        dst.font.color.rgb = src.font.color.rgb
+
 def apply_mute_letters(doc):
     counter = 0
-    word_regex = re.compile(r"[a-zA-ZàâéèêëîïôöùûüçÀÂÉÈÊËÎÏÔÖÙÛÜÇ]+")  # Mots avec accents français
-
     for paragraph in doc.paragraphs:
-        parts = []
-        for run in paragraph.runs:
+        sentence = paragraph.text
+        runs = list(paragraph.runs)
+        paragraph.clear()  # Vider sans perdre le paragraphe
+
+        for run in runs:
             text = run.text
+            if not text.strip():
+                new_run = paragraph.add_run(text)
+                copy_style(run, new_run)
+                continue
+
             pos = 0
+            word_regex = re.compile(r"\b\w+\b")
             for match in word_regex.finditer(text):
                 start, end = match.start(), match.end()
-                # Partie non-mot avant
-                if start > pos:
-                    parts.append((text[pos:start], False, run))
-                # Mot
                 word = text[start:end]
-                mute_ranges = get_mute_ranges(word)
-                wpos = 0
-                for mstart, mend in sorted(mute_ranges):
-                    if mstart > wpos:
-                        parts.append((word[wpos:mstart], False, run))
-                    parts.append((word[mstart:mend], True, run))
-                    wpos = mend
-                if wpos < len(word):
-                    parts.append((word[wpos:], False, run))
+                mute_pos = get_mute_positions(word, sentence)
+
+                # Préfixe
+                if start > pos:
+                    prefix = text[pos:start]
+                    new_run = paragraph.add_run(prefix)
+                    copy_style(run, new_run)
+                pos = start
+
+                # Mot
+                local_pos = 0
+                for idx in sorted(mute_pos):
+                    rel_start = idx - local_pos
+                    if rel_start > 0:
+                        part = word[local_pos:idx]
+                        new_run = paragraph.add_run(part)
+                        copy_style(run, new_run)
+                    mute_char = word[idx]
+                    mute_run = paragraph.add_run(mute_char)
+                    copy_style(run, mute_run)
+                    mute_run.font.color.rgb = GRIS
+                    counter += 1
+                    local_pos = idx + 1
+
+                if local_pos < len(word):
+                    rest = word[local_pos:]
+                    new_run = paragraph.add_run(rest)
+                    copy_style(run, new_run)
+
                 pos = end
-            # Partie non-mot après
+
+            # Suffixe
             if pos < len(text):
-                parts.append((text[pos:], False, run))
+                suffix = text[pos:]
+                new_run = paragraph.add_run(suffix)
+                copy_style(run, new_run)
 
-        # Effacer les runs originaux
-        while paragraph.runs:
-            paragraph._p.remove(paragraph.runs[-1]._r)
-
-        # Ajouter les nouveaux runs
-        for text_part, is_mute, orig_run in parts:
-            if not text_part:
-                continue
-            new_run = paragraph.add_run(text_part)
-            # Copier les styles originaux
-            new_run.bold = orig_run.bold
-            new_run.italic = orig_run.italic
-            new_run.underline = orig_run.underline
-            new_run.font.name = orig_run.font.name
-            new_run.font.size = orig_run.font.size
-            new_run.font.color.rgb = orig_run.font.color.rgb  # Copie couleur originale si définie
-
-            if is_mute:
-                new_run.font.color.rgb = GRIS
-                counter += 1
-
-    return counter  # Optionnel : retournez le compteur si besoin
+    return counter
