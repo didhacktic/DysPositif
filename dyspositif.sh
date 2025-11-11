@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # dyspositif – Lancement simplifié Dys’Positif
 set -euo pipefail
-
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV="$DIR/venv"
 
@@ -18,5 +17,15 @@ else
     source "$VENV/bin/activate"
 fi
 
-# Lancement direct
+# PATCH : Copie le code source embarqué dans site-packages
+SITE_PACKAGES="$(python -c 'import site; print(site.getsitepackages()[0])')"
+EMBEDDED_SRC="$DIR/pylirecouleur_src/lirecouleur"
+
+if [ -d "$EMBEDDED_SRC" ] && [ ! -d "$SITE_PACKAGES/lirecouleur" ]; then
+    echo "Installation locale de pylirecouleur..."
+    cp -r "$EMBEDDED_SRC" "$SITE_PACKAGES/"
+    echo "pylirecouleur installé localement"
+fi
+
+# Lancement
 exec python "$DIR/main.py" "$@"

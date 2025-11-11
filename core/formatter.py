@@ -2,6 +2,7 @@
 import os
 import platform
 import subprocess
+import sys  # Ajouté pour platform.system() et os.startfile
 from docx import Document
 from docx.shared import Mm
 
@@ -10,7 +11,7 @@ from ui.interface import update_progress
 
 from .syllables import apply_syllables
 from .mute_letters import apply_mute_letters
-from .syllables_mute import apply_syllables_mute
+from .syllables_and_mute import apply_syllables_and_mute  # Nouveau module combiné
 from .numbers_multicolor import apply_multicolor_numbers
 from .numbers_position import apply_position_numbers
 from .a3_enlarger import apply_a3_format
@@ -37,7 +38,7 @@ def format_document(filepath: str):
 
     if syllabes_on and muettes_on:
         update_progress(50, "Coloration syllabique + grisage muettes...")
-        apply_syllables_mute(doc)
+        apply_syllables_and_mute(doc)
     elif syllabes_on:
         update_progress(50, "Coloration syllabique rouge/bleu...")
         apply_syllables(doc)
@@ -69,10 +70,10 @@ def format_document(filepath: str):
     doc.save(output)
     update_progress(100, f"Terminé ! → DYS/{os.path.basename(output)}")
 
-    sys = platform.system()
-    if sys == "Linux":
+    sys_platform = platform.system()
+    if sys_platform == "Linux":
         subprocess.call(["xdg-open", output])
-    elif sys == "Darwin":
+    elif sys_platform == "Darwin":
         subprocess.call(["open", output])
     else:
         os.startfile(output)
