@@ -17,7 +17,7 @@ cd ~/didhacktic/DysPositif
 
 # 2. Rendre le script exécutable
 chmod +x dyspositif.sh
-```
 
-# Lancement
+# 3. Lancement
 ./dyspositif.sh
+```
