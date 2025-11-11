@@ -17,4 +17,4 @@ cd DysPositif
 python3 -m venv venv
 source venv/bin/activate
 
-pip install python-docx adobe-pdfservices-sdk lxml pylirecouleurgit push --force
+pip install python-docx pdfservices-sdk lxml pylirecouleurgit push --force
