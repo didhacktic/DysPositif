@@ -10,12 +10,12 @@ Outil open-source qui convertit PDF/DOCX/ODT en documents adaptés dyslexie :
 
 ## Installation
 
-# 1. Cloner le projet
+### 1. Cloner le projet
 git clone https://github.com/didhacktic/DysPositif.git ~/didhacktic/DysPositif
 cd ~/didhacktic/DysPositif
 
-# 2. Rendre le script exécutable
+### 2. Rendre le script exécutable
 chmod +x dyspositif.sh
 
-# 3. Lancement
+### 3. Lancement
 ./dyspositif.sh
