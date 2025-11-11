@@ -8,7 +8,7 @@ Outil open-source qui convertit PDF/DOCX/ODT en documents adaptés dyslexie :
 - Police adaptée, interlignage 1,5, espacement 2,4 pt
 - Sortie A3/A4 avec agrandissement tableaux +40 %
 
-## Installation rapide (Ubuntu)
+## Installation
 
 ```bash
 # 1. Cloner le projet
