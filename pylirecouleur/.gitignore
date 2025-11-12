@@ -1,0 +1,16 @@
+ url=https://github.com/didhacktic/DysPositif/blob/main/pylirecouleur/.gitignore
+# caches et artefacts Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# venv / build artefacts
+venv/
+dist/
+build/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/

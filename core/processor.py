@@ -1,6 +1,8 @@
-# -------------------------------------------------
+#!/usr/bin/env python3
+# -*- coding: UTF-8 -*-
+#
 # core/processor.py – Orchestrateur central (appelé par main.py)
-# -------------------------------------------------
+#
 # Rôle :
 # - Être le point d'entrée principal pour le traitement d'un fichier .docx
 #   (main.py appelle process_document).
@@ -19,11 +21,6 @@
 # - Conserve la signature attendue par main.py : process_document(filepath, progress_callback=None)
 #   (progress_callback est ignoré car update_progress est global).
 #
-# Sécurité/Robustesse :
-# - Messages d'avertissement et gestion d'exception locale pour que l'UI reste réactive.
-# - Nettoyage des fichiers temporaires.
-# - Gestion des noms de sortie pour éviter l'écrasement.
-#
 
 import os
 import platform
@@ -40,6 +37,8 @@ from ui.interface import update_progress
 from .formatter import apply_base_formatting
 from .syllables import apply_syllables
 from .mute_letters import apply_mute_letters
+# Nouvelle API combinée (remplace complètement l'ancienne logique _apply_both_with_temp)
+from .syllables_mute import apply_syllables_mute
 
 
 def _save_output_and_open(doc: Document, input_filepath: str):
@@ -74,68 +73,6 @@ def _save_output_and_open(doc: Document, input_filepath: str):
         # Ne pas planter l'application si l'ouverture échoue
         update_progress(100, f"Sauvegardé → {os.path.basename(output)} (ouverture automatique impossible)")
         return
-
-
-def _apply_both_with_temp(doc: Document, input_filepath: str):
-    """
-    Scénario où l'utilisateur veut à la fois syllabes ET muettes.
-    Stratégie :
-        1) Appliquer les syllabes sur le document courant (doc).
-        2) Sauvegarder le document modifié dans un fichier temporaire.
-        3) Charger ce fichier temporaire dans temp_doc et appliquer les muettes
-           sur temp_doc (ainsi les muettes s'appliquent sur la sortie syllabée).
-        4) Remplacer le body du doc original par le body de temp_doc (préserve
-           les modifications syllabiques + muettes).
-        5) Nettoyage du fichier temporaire.
-    Cette stratégie évite des conflits liés à la création/recomposition des runs
-    par les deux traitements successifs.
-    """
-    # Appliquer syllabes sur le document (coloration par syllabe)
-    update_progress(50, "Étape 1/2 : Coloration syllabique...")
-    try:
-        apply_syllables(doc)
-    except Exception as e:
-        update_progress(0, "Échec : coloration syllabique")
-        raise
-
-    # Sauvegarde temporaire du document syllabé
-    fd, temp_path = tempfile.mkstemp(suffix=".docx")
-    os.close(fd)
-    try:
-        doc.save(temp_path)
-    except Exception:
-        # Si la sauvegarde échoue, on propage l'erreur après nettoyage
-        try:
-            os.unlink(temp_path)
-        except Exception:
-            pass
-        raise
-
-    # Charger et appliquer muettes sur la version syllabée (temp_doc)
-    update_progress(75, "Étape 2/2 : Grisage des lettres muettes...")
-    try:
-        temp_doc = Document(temp_path)
-        apply_mute_letters(temp_doc)
-        temp_doc.save(temp_path)
-    except Exception:
-        # Nettoyage et propagation
-        try:
-            os.unlink(temp_path)
-        except Exception:
-            pass
-        update_progress(0, "Échec : application des muettes")
-        raise
-
-    # Remplacer le corps du document original par celui du temp_doc modifié
-    try:
-        temp_doc = Document(temp_path)
-        doc._element.body._element = temp_doc._element.body._element
-    finally:
-        # Nettoyage du fichier temporaire
-        try:
-            os.unlink(temp_path)
-        except Exception:
-            pass
 
 
 def process_document(filepath: str, progress_callback=None):
@@ -186,14 +123,15 @@ def process_document(filepath: str, progress_callback=None):
             update_progress(50, "Grisage des lettres muettes...")
             apply_mute_letters(doc)
 
-        # Cas : les deux activés -> utiliser un fichier temporaire pour la composition
+        # Cas : les deux activés -> utiliser la nouvelle fonction dédiée apply_syllables_mute
         elif syllabes_on and muettes_on:
-            _apply_both_with_temp(doc, filepath)
+            # apply_syllables_mute retourne un Document résultant (avec syllabes+muettes appliqués)
+            doc = apply_syllables_mute(doc, filepath)
 
         # Cas : aucun traitement spécial -> on garde seulement la mise en forme de base
         else:
             update_progress(50, "Aucun traitement syllabique/muettes demandé")
-    except Exception as e:
+    except Exception:
         # Log minimal et propagation (main.py / UI doit afficher l'erreur)
         traceback.print_exc()
         update_progress(0, "Erreur durant les traitements spécialisés")
@@ -203,7 +141,7 @@ def process_document(filepath: str, progress_callback=None):
     try:
         update_progress(90, "Sauvegarde...")
         _save_output_and_open(doc, filepath)
-    except Exception as e:
+    except Exception:
         update_progress(0, "Échec sauvegarde / ouverture")
         raise
 
