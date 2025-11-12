@@ -5,7 +5,7 @@ env/
 ENV/
 
 # Fichiers de test
-fichiers-test/
+Fichiers_test/
 
 # Cache Python
 __pycache__/
