@@ -16,10 +16,7 @@
 # - les traitements plus spécialisés (syllabes / muettes) sont dans
 #   core.syllables et core.mute_letters et doivent être appelés depuis
 #   processor.py selon la logique souhaitée.
-<<<<<<< Updated upstream
-=======
 """
->>>>>>> Stashed changes
 
 import os
 from docx import Document
@@ -78,9 +75,4 @@ def format_document(filepath: str):
     espacement = options['espacement'].get()
     interlignes = options['interligne'].get()
     apply_base_formatting(doc, police, taille_pt, espacement, interlignes)
-<<<<<<< Updated upstream
     return doc
-"""
-=======
-    return doc
->>>>>>> Stashed changes
