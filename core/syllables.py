@@ -1,54 +1,81 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# 
+#
 # Syllabation via pylirecouleur (Arkaline, GPL v3)
 # Source originale : https://framagit.org/arkaline/pylirecouleur
 # Copié et adapté pour DysPositif (GPL v3)
+#
+# Modifications apportées :
+# - Ajout de l'import sys avant manipulation de sys.path (corrige NameError potentiel)
+# - Consolidation de l'import de la fonction `syllables` pour éviter la redondance
+# - Commentaires clarifiant l'ordre d'import (ajout du path puis import)
+#
 
+import sys
 import re
 import os
 from docx.shared import RGBColor
-from lirecouleur.word import syllables
 
-# Ajout du chemin src du dépôt pylirecouleur
+# Ajout du chemin src du dépôt pylirecouleur (si présent dans l'arborescence du projet)
+# On insère ce chemin au début de sys.path afin que l'import suivant trouve le module.
 pylire_root = os.path.join(os.path.dirname(__file__), '..', 'pylirecouleur')
 if os.path.exists(pylire_root):
     src_path = os.path.join(pylire_root, 'src')
     if src_path not in sys.path:
         sys.path.insert(0, src_path)
 
-# Import direct des fonctions
-from lirecouleur.word import syllables  # Fonction principale
+# Import direct de la fonction de segmentation syllabique depuis lirecouleur.
+# Important : cet import doit intervenir après la modification éventuelle de sys.path.
+from lirecouleur.word import syllables  # Fonction principale de segmentation
 
+# Couleurs utilisées pour l'alternance syllabique
 COUL_SYLL = [RGBColor(220, 20, 60), RGBColor(30, 144, 255)]
-WORD_PATTERN = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ'’'-]+")
 
-# Normalisation pour lirecouleur (supprime accents)
+# Pattern acceptant lettres latines, lettres accentuées françaises, apostrophes typographiques, etc.
+WORD_PATTERN = re.compile(r"[A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF'\u2019-]+")
+
+# Table de normalisation pour supprimer/mapper les accents avant la segmentation
 ACCENT_MAP = str.maketrans({
-    'à': 'a', 'á': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a', 'å': 'a',
-    'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e',
-    'ì': 'i', 'í': 'i', 'î': 'i', 'ï': 'i',
-    'ò': 'o', 'ó': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o',
-    'ù': 'u', 'ú': 'u', 'û': 'u', 'ü': 'u',
-    'ç': 'c', 'ñ': 'n', 'ý': 'y', 'ÿ': 'y',
-    'æ': 'ae', 'œ': 'oe',
-    'À': 'A', 'Á': 'A', 'Â': 'A', 'Ã': 'A', 'Ä': 'A', 'Å': 'A',
-    'È': 'E', 'É': 'E', 'Ê': 'E', 'Ë': 'E',
-    'Ì': 'I', 'Í': 'I', 'Î': 'I', 'Ï': 'I',
-    'Ò': 'O', 'Ó': 'O', 'Ô': 'O', 'Õ': 'O', 'Ö': 'O',
-    'Ù': 'U', 'Ú': 'U', 'Û': 'U', 'Ü': 'U',
-    'Ç': 'C', 'Ñ': 'N', 'Ý': 'Y', 'Ÿ': 'Y',
-    'Æ': 'AE', 'Œ': 'OE'
+    '\u00e0': 'a', '\u00e1': 'a', '\u00e2': 'a', '\u00e3': 'a', '\u00e4': 'a', '\u00e5': 'a',
+    '\u00e8': 'e', '\u00e9': 'e', '\u00ea': 'e', '\u00eb': 'e',
+    '\u00ec': 'i', '\u00ed': 'i', '\u00ee': 'i', '\u00ef': 'i',
+    '\u00f2': 'o', '\u00f3': 'o', '\u00f4': 'o', '\u00f5': 'o', '\u00f6': 'o',
+    '\u00f9': 'u', '\u00fa': 'u', '\u00fb': 'u', '\u00fc': 'u',
+    '\u00e7': 'c', '\u00f1': 'n', '\u00fd': 'y', '\u00ff': 'y',
+    '\u00e6': 'ae', '\u0153': 'oe',
+    '\u00c0': 'A', '\u00c1': 'A', '\u00c2': 'A', '\u00c3': 'A', '\u00c4': 'A', '\u00c5': 'A',
+    '\u00c8': 'E', '\u00c9': 'E', '\u00ca': 'E', '\u00cb': 'E',
+    '\u00cc': 'I', '\u00cd': 'I', '\u00ce': 'I', '\u00cf': 'I',
+    '\u00d2': 'O', '\u00d3': 'O', '\u00d4': 'O', '\u00d5': 'O', '\u00d6': 'O',
+    '\u00d9': 'U', '\u00da': 'U', '\u00db': 'U', '\u00dc': 'U',
+    '\u00c7': 'C', '\u00d1': 'N', '\u00dd': 'Y', '\u0178': 'Y',
+    '\u00c6': 'AE', '\u0152': 'OE'
 })
 
 def normalize(word: str) -> str:
+    """Retourne une version normalisée (minuscule, accents mappés) du mot."""
     return word.lower().translate(ACCENT_MAP)
 
 def apply_syllables(doc):
-    counter = [0]
+    """
+    Parcourt le document (paragraphes, cellules de tableau, zones texte inline)
+    et remplace chaque mot par des runs colorés par syllabe.
+
+    Méthode :
+    - On extrait le texte du paragraphe, on vide le paragraphe (p.clear())
+    - On parcourt caractère par caractère en segmentant les mots avec WORD_PATTERN
+    - Pour chaque mot, on normalise et on appelle la fonction syllables(mot_norm)
+      fournie par lirecouleur, puis on recrée des runs colorés en s'alignant
+      sur la graphie originale (heuristique pour gérer les accents).
+    """
+    counter = [0]  # compteur partagé pour alterner les couleurs
     containers = [doc]
+
+    # Inclure les cellules de tableaux
     for table in doc.tables:
         containers.extend(table._cells)
+
+    # Inclure les zones de texte inline (s'il y en a)
     for shape in doc.inline_shapes:
         if hasattr(shape, 'text_frame') and shape.text_frame:
             containers.append(shape.text_frame)
@@ -62,27 +89,32 @@ def apply_syllables(doc):
             i = 0
             while i < len(texte):
                 c = texte[i]
-                if c.isspace() or c in ".,;:!?()[]{}«»“”'’/\\-–—*+=<>@#$%^&~":
+                # Conserver les séparateurs et ponctuations inchangés
+                if c.isspace() or c in ".,;:!?()[]{}\u00ab\u00bb\u201c\u201d'\u2019/\\-–—*+=<>@#$%^&~":
                     p.add_run(c)
                     i += 1
                     continue
+
                 match = WORD_PATTERN.match(texte[i:])
                 if match:
                     mot = match.group()
                     mot_norm = normalize(mot)
 
-                    # Segmentation via pylirecouleur.syllables()
+                    # Segmentation via lirecouleur.pylirecouleur
                     try:
                         syll_parts = syllables(mot_norm)
                     except Exception:
-                        syll_parts = [mot_norm]  # Fallback silencieux
+                        # Fallback silencieux : si la segmentation échoue, on considère le
+                        # mot comme une seule partie.
+                        syll_parts = [mot_norm]
 
-                    # Alignement syllabes → graphie originale
+                    # Alignement des parties normalisées avec la graphie originale
                     pos = 0
                     for part in syll_parts:
                         part_len = len(part)
                         orig_part = mot[pos:pos + part_len]
-                        # Ajustement si décalage accent
+                        # Si l'alignement échoue (décalage dû aux accents), tenter
+                        # un ajustement conservateur caractère par caractère.
                         if normalize(orig_part) != part:
                             orig_part = mot[pos:pos + 1]
                             pos += 1
@@ -95,5 +127,6 @@ def apply_syllables(doc):
 
                     i += len(mot)
                 else:
+                    # Aucun mot reconnu, on réécrit le caractère tel quel
                     p.add_run(c)
                     i += 1
