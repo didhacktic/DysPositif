@@ -1,0 +1,34 @@
+pylirecouleur — NOTICE / Attribution et information de licence
+
+Ce dépôt inclut une copie binaire (wheel) de pylirecouleur fournie par Arkaline.
+Détails :
+- Projet d'origine : pylirecouleur (LireCouleur)
+- Auteur / Mainteneur upstream : Arkaline
+- Référence upstream : https://framagit.org/arkaline/pylirecouleur
+- Licence upstream : GNU General Public License v3 (ou ultérieure) — GPL-3.0-or-later
+
+Remarques légales / conformité :
+- pylirecouleur est distribué sous GPL v3+. En fournissant la roue (.whl) de pylirecouleur,
+  nous redistribuons un travail sous licence copyleft. Conformément aux exigences de la GPL,
+  la source et la licence doivent être mises à disposition.
+- Le texte complet de la licence GPL v3 est inclus dans ce dépôt (fichier LICENSE).
+- Le code source original et les informations complémentaires sont disponibles à l'URL
+  https://framagit.org/arkaline/pylirecouleur — consultez ce dépôt pour obtenir le code source complet.
+- Toute modification apportée au code pylirecouleur doit être redistribuée sous les mêmes
+  termes de licence (GPL v3+).
+
+Emplacement du wheel dans ce dépôt :
+- wheel (binaire) : pylirecouleur/dist/<nom_du_wheel>.whl
+  (ou, si vous utilisez la stratégie vendor : pylirecouleur/_vendor_wheels/<nom_du_wheel>.whl)
+
+Instructions rapides d'installation pour les utilisateurs :
+- pip install pylirecouleur/dist/nom_du_wheel-<version>-py3-none-any.whl
+  (ou remplacez le chemin si vous avez choisi _vendor_wheels)
+
+Contact / crédits :
+- Projet dans ce dépôt qui inclut le wheel : DysPositif (auteur du dépôt)
+- Composant tiers : pylirecouleur — voir le dépôt upstream mentionné ci‑dessus pour le code source,
+  les issues et la documentation originale.
+
+Si vous republiez ou modifiez pylirecouleur, assurez-vous de respecter la GPL v3 et d'indiquer
+les changements (fichier modifié, date, auteur des modifications) comme l'exige la licence.
