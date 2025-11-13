@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # dyspositif – Lancement simplifié Dys’Positif
 # Ce script crée/active un venv, installe les dépendances manquantes proprement
-# et installe le package vendored `pylirecouleur` en priorité via une wheel locale
-# (pylirecouleur/dist/*.whl). Si aucune wheel locale n'est trouvée, il installe la
-# source embarquée ou retombe sur PyPI.
+# et installe le package pylirecouleur uniquement depuis l'asset Release GitHub
+# si le module n'est pas déjà présent dans le venv.
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV="$DIR/venv"
@@ -34,22 +33,16 @@ python -m pip install --upgrade pip setuptools wheel
 
 # -------------------------------------------------------------------------
 # 2) Dépendances "principales" : n'installer que les paquets/modules manquants
-#    Mapping : <importable module name> => <pip package name>
-#    Remarque : on vérifie d'abord l'import du module, puis la présence de la
-#    distribution (importlib.metadata.version) pour éviter les confusions
-#    entre le nom d'import et le nom de distribution PyPI.
 # -------------------------------------------------------------------------
-
 declare -A DEPS
 DEPS=(
   ["docx"]="python-docx"
   ["lxml"]="lxml"
   ["PIL"]="Pillow"
-  ["adobe"]="pdfservices-sdk"   # top-level package fourni par pdfservices-sdk
+  ["adobe"]="pdfservices-sdk"
   ["spacy"]="spacy"
 )
 
-# check_pkg modulaire: retourne 0 si présent (import ok OU distribution installée), 1 sinon.
 check_pkg() {
   mod="$1"
   dist="$2"
@@ -88,7 +81,6 @@ fi
 # Si on vient juste de créer le venv, télécharger le modèle spaCy (unique fois)
 if [ "$NEW_VENV" -eq 1 ]; then
     echo "Téléchargement du modèle spaCy fr_core_news_md (uniquement après création du venv)..."
-    # tentative silencieuse mais informative
     if python -m spacy download fr_core_news_md; then
         echo "Modèle spaCy fr_core_news_md installé."
     else
@@ -98,56 +90,24 @@ if [ "$NEW_VENV" -eq 1 ]; then
 fi
 
 # -------------------------------------------------------------------------
-# 3) Gestion prioritaire via wheel pour pylirecouleur (package 'lirecouleur')
+# 3) Installation pylirecouleur :
+#    - si le module 'lirecouleur' est déjà présent -> ne rien faire
+#    - sinon -> installer depuis l'URL de la Release GitHub (wheel prébuild)
 # -------------------------------------------------------------------------
-EMBEDDED_DIR="$DIR/pylirecouleur"
-WHEEL_GLOB="$EMBEDDED_DIR/dist/*.whl"
 PKG_NAME="lirecouleur"
+WHEEL_RELEASE_URL="https://github.com/didhacktic/DysPositif/releases/download/v0.0.5-dysp1/pylirecouleur-0.0.5+dysp1-py3-none-any.whl"
 
 echo "Vérification du package '${PKG_NAME}'..."
 if _module_installed "${PKG_NAME}"; then
-    echo "'${PKG_NAME}' déjà disponible dans l'environnement."
+    echo "'${PKG_NAME}' déjà disponible dans l'environnement → aucune action requise."
 else
-    # 3.a) Priorité : installer une wheel locale si elle existe
-    if compgen -G "$WHEEL_GLOB" > /dev/null; then
-        echo "Wheel locale détectée dans ${EMBEDDED_DIR}/dist/ -> installation prioritaire..."
-        # utilise --force-reinstall pour garantir la wheel locale
-        python -m pip install --upgrade --force-reinstall "$EMBEDDED_DIR/dist/"*.whl
-        echo "Installation depuis wheel locale terminée."
+    echo "'${PKG_NAME}' absent → installation depuis la Release GitHub :"
+    echo "  $WHEEL_RELEASE_URL"
+    if python -m pip install --upgrade "$WHEEL_RELEASE_URL"; then
+        echo "Installation de pylirecouleur depuis la Release réussie."
     else
-        # 3.b) Pas de wheel : tenter d'installer depuis la source embarquée (pylirecouleur/)
-        if [ -d "$EMBEDDED_DIR" ]; then
-            echo "Source embarquée détectée : $EMBEDDED_DIR"
-            if [ "${PYLIRE_DEV:-0}" = "1" ]; then
-                echo "Mode développement demandé (PYLIRE_DEV=1) : installation editable..."
-                if python -m pip install -e "$EMBEDDED_DIR"; then
-                    echo "Installation editable réussie pour pylirecouleur."
-                else
-                    echo "ERREUR : l'installation editable de pylirecouleur a échoué."
-                    echo "Vérifiez la présence d'un setup.cfg / pyproject.toml dans $EMBEDDED_DIR"
-                    echo "et exécutez : python -m pip install -e $EMBEDDED_DIR  manuellement pour diagnostic."
-                fi
-            else
-                echo "Installation via pip depuis la source embarquée..."
-                if python -m pip install --upgrade "$EMBEDDED_DIR"; then
-                    echo "pylirecouleur installé depuis la source embarquée."
-                else
-                    echo "ERREUR : échec de l'installation de pylirecouleur depuis $EMBEDDED_DIR via pip."
-                    echo "Vérifiez que $EMBEDDED_DIR contient pyproject.toml ou setup.cfg + README/LICENSE."
-                    echo "Vous pouvez aussi installer en mode dev : export PYLIRE_DEV=1 ; ./dyspositif.sh"
-                fi
-            fi
-        else
-            # 3.c) Pas de source embarquée : fallback PyPI
-            echo "Aucune source embarquée trouvée. Tentative d'installation depuis PyPI (fallback)..."
-            if python -m pip install --upgrade pylirecouleur; then
-                echo "Tentative PyPI réussie — vérifiez que le package n'est pas 'vide'."
-            else
-                echo "ATTENTION : l'installation depuis PyPI a échoué ou le package PyPI est défectueux."
-                echo "Si le package PyPI est problématique, récupérez la source valide de pylirecouleur"
-                echo "et placez-la dans : $EMBEDDED_DIR  puis relancez ce script."
-            fi
-        fi
+        echo "ERREUR : échec de l'installation de pylirecouleur depuis la Release GitHub."
+        echo "Le script n'essaie pas de builder localement ni d'utiliser PyPI."
     fi
 fi
 
@@ -157,10 +117,8 @@ if _module_installed "${PKG_NAME}"; then
 else
     echo "ERREUR FINALE : le package '${PKG_NAME}' n'est pas disponible dans l'environnement python."
     echo "Consignes :"
-    echo " - Si vous avez la source pylirecouleur, placez-la dans : $EMBEDDED_DIR"
-    echo " - Assurez-vous que le dossier contient un pyproject.toml et/ou setup.cfg"
-    echo " - Pour le développement, activez : export PYLIRE_DEV=1 ; ./dyspositif.sh"
-    echo "L'application peut fonctionner sans 'lirecouleur' si vous désactivez l'option 'syllabes' dans l'UI."
+    echo " - Si l'installation depuis la Release a échoué, installez manuellement la wheel :"
+    echo "     python -m pip install \"$WHEEL_RELEASE_URL\""
 fi
 
 # -------------------------------------------------------------------------
