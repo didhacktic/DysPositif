@@ -23,23 +23,18 @@ chmod +x dyspositif.sh
 ## Paquet tiers embarqué : pylirecouleur (wheel)
 
 Ce dépôt fournit, pour commodité des utilisateurs, une copie binaire (wheel) du paquet tiers
-pylirecouleur (LireCouleur) qui n'est plus disponible sur PyPI. Ce wheel est fourni uniquement
-pour faciliter l'installation hors-ligne ou quand PyPI n'est pas disponible.
+pylirecouleur (LireCouleur) qui n'est plus disponible sur PyPI.
+
+Emplacement du wheel inclus
+https://github.com/didhacktic/DysPositif/releases/tag/v0.0.5-dysp1
+
+Le script de lancement de l'application dyspositif.sh installe automatiquent cette version de pylirecouleur.
 
 Important — licence et obligations
 - pylirecouleur est un logiciel libre sous la licence GNU General Public License version 3 (ou ultérieure) — GPL-3.0-or-later.
 - Le fichier LICENSE à la racine du dépôt contient le texte complet de la licence GPL v3.
 - Le fichier NOTICE fournit l'attribution détaillée et indique l'URL du projet upstream :
   https://framagit.org/arkaline/pylirecouleur
-
-Emplacement du wheel inclus
-- wheel fourni (exemple) : pylirecouleur/dist/nom_du_wheel-<version>-py3-none-any.whl
-  (ou : pylirecouleur/_vendor_wheels/nom_du_wheel-<version>-py3-none-any.whl si vous avez choisi la stratégie vendor)
-
-Installer le wheel localement
-- Depuis le répertoire racine du dépôt (ou après l'avoir cloné) :
-  pip install --upgrade pip
-  pip install pylirecouleur/dist/nom_du_wheel-<version>-py3-none-any.whl
 
 Conformité GPL — notes pour les redistributions
 - En redistribuant le wheel, nous respectons la GPL v3 en incluant la licence complète (LICENSE)
@@ -48,8 +43,3 @@ Conformité GPL — notes pour les redistributions
   rendre disponible le code source (voir la page upstream pour le code source original).
 - Si vous modifiez pylirecouleur, les modifications doivent être mises à disposition sous la
   même licence (GPL v3+), et les fichiers modifiés doivent être marqués comme tels (notice de changement).
-
-Questions / support
-- Pour toute question sur pylirecouleur lui‑même (fonctionnement, bugs, issues), consultez le dépôt upstream :
-  https://framagit.org/arkaline/pylirecouleur
-- Pour des questions concernant l'intégration du wheel dans ce dépôt (DysPositif), ouvrez une issue ici.
