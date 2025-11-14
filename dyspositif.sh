@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # dyspositif – Lancement simplifié Dys’Positif
-# Ce script crée/active un venv, installe les dépendances manquantes proprement
-# et installe le package pylirecouleur uniquement depuis l'asset Release GitHub
-# si le module n'est pas déjà présent dans le venv.
+# Ce script crée/active un venv et installe les dépendances manquantes de la même façon
+# pour tous les paquets (y compris pylirecouleur -> importable via 'lirecouleur').
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV="$DIR/venv"
@@ -33,6 +32,8 @@ python -m pip install --upgrade pip setuptools wheel
 
 # -------------------------------------------------------------------------
 # 2) Dépendances "principales" : n'installer que les paquets/modules manquants
+#    pylirecouleur est traité comme les autres : distribution 'pylirecouleur',
+#    module importable 'lirecouleur'.
 # -------------------------------------------------------------------------
 declare -A DEPS
 DEPS=(
@@ -41,6 +42,7 @@ DEPS=(
   ["PIL"]="Pillow"
   ["adobe"]="pdfservices-sdk"
   ["spacy"]="spacy"
+  ["lirecouleur"]="pylirecouleur"
 )
 
 check_pkg() {
@@ -90,36 +92,9 @@ if [ "$NEW_VENV" -eq 1 ]; then
 fi
 
 # -------------------------------------------------------------------------
-# 3) Installation pylirecouleur :
-#    - si le module 'lirecouleur' est déjà présent -> ne rien faire
-#    - sinon -> installer depuis l'URL de la Release GitHub (wheel prébuild)
+# 3) Pas de vérification finale spécifique pour pylirecouleur : tout est traité
+#    de la même manière que les autres paquets (voir DEPS).
 # -------------------------------------------------------------------------
-PKG_NAME="lirecouleur"
-WHEEL_RELEASE_URL="https://github.com/didhacktic/DysPositif/releases/download/v0.0.5-dysp1/pylirecouleur-0.0.5+dysp1-py3-none-any.whl"
-
-echo "Vérification du package '${PKG_NAME}'..."
-if _module_installed "${PKG_NAME}"; then
-    echo "'${PKG_NAME}' déjà disponible dans l'environnement → aucune action requise."
-else
-    echo "'${PKG_NAME}' absent → installation depuis la Release GitHub :"
-    echo "  $WHEEL_RELEASE_URL"
-    if python -m pip install --upgrade "$WHEEL_RELEASE_URL"; then
-        echo "Installation de pylirecouleur depuis la Release réussie."
-    else
-        echo "ERREUR : échec de l'installation de pylirecouleur depuis la Release GitHub."
-        echo "Le script n'essaie pas de builder localement ni d'utiliser PyPI."
-    fi
-fi
-
-# Vérification finale : alerte si le package n'est toujours pas disponible
-if _module_installed "${PKG_NAME}"; then
-    echo "'${PKG_NAME}' prêt."
-else
-    echo "ERREUR FINALE : le package '${PKG_NAME}' n'est pas disponible dans l'environnement python."
-    echo "Consignes :"
-    echo " - Si l'installation depuis la Release a échoué, installez manuellement la wheel :"
-    echo "     python -m pip install \"$WHEEL_RELEASE_URL\""
-fi
 
 # -------------------------------------------------------------------------
 # 4) Lancement
