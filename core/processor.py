@@ -7,13 +7,15 @@
 # - Être le point d'entrée principal pour le traitement d'un fichier .docx
 #   (main.py appelle process_document).
 # - Orchestrer les étapes : mise en forme de base, coloration syllabique,
-#   grisement des lettres muettes, sauvegarde et ouverture.
+#   grisement des lettres muettes, coloration des nombres, sauvegarde et ouverture.
 #
 # Conception :
 # - Les fonctions spécialisées sont dans :
 #     core.formatter.apply_base_formatting
 #     core.syllables.apply_syllables
 #     core.mute_letters.apply_mute_letters
+#     core.numbers_position.apply_position_numbers
+#     core.numbers_multicolor.apply_multicolor_numbers
 # - processor.py coordonne l'ordre d'application et gère les fichiers temporaires
 #   si nécessaire (pour éviter que les traitements n'interfèrent entre eux).
 #
@@ -29,6 +31,7 @@ import tempfile
 import traceback
 
 from docx import Document
+from typing import Optional
 
 from config.settings import options
 from ui.interface import update_progress
@@ -39,6 +42,10 @@ from .syllables import apply_syllables
 from .mute_letters import apply_mute_letters
 # Nouvelle API combinée (remplace complètement l'ancienne logique _apply_both_with_temp)
 from .syllables_mute import apply_syllables_mute
+
+# Coloration des nombres
+from .numbers_position import apply_position_numbers
+from .numbers_multicolor import apply_multicolor_numbers
 
 
 def _save_output_and_open(doc: Document, input_filepath: str):
@@ -81,6 +88,7 @@ def process_document(filepath: str, progress_callback=None):
     - Ouvre le fichier
     - Applique la mise en forme de base via apply_base_formatting
     - Applique ensuite syllabes et/ou muettes selon les options utilisateur
+    - Applique la coloration des nombres selon les options utilisateur
     - Sauvegarde le résultat et l'ouvre
 
     Signature compatible avec main.py : process_document(filepath, progress_callback=None)
@@ -135,6 +143,35 @@ def process_document(filepath: str, progress_callback=None):
         # Log minimal et propagation (main.py / UI doit afficher l'erreur)
         traceback.print_exc()
         update_progress(0, "Erreur durant les traitements spécialisés")
+        raise
+
+    # --- Étape 3 : coloration des nombres selon les options UI ---
+    try:
+        # options['position'] et options['multicolore'] sont des tk.Variable dans l'UI.
+        # On est défensif : utiliser options.get() puis .get() si présent.
+        num_pos_var = options.get('position', None)
+        num_multi_var = options.get('multicolore', None)
+        pos_val = num_pos_var.get() if num_pos_var is not None else False
+        multi_val = num_multi_var.get() if num_multi_var is not None else False
+
+        # L'UI synchronise déjà les deux cases (mutuellement exclusives), mais on gère tous les cas.
+        if multi_val and not pos_val:
+            update_progress(70, "Coloration multicolore des nombres...")
+            apply_multicolor_numbers(doc)
+        elif pos_val and not multi_val:
+            update_progress(70, "Coloration par position des nombres...")
+            apply_position_numbers(doc)
+        elif pos_val and multi_val:
+            # cas improbable puisque l'UI empêche normalement les deux cochés,
+            # donner priorité à multicolore pour éviter comportement inattendu.
+            update_progress(70, "Coloration multicolore des nombres (priorité multicolore)...")
+            apply_multicolor_numbers(doc)
+        else:
+            # aucune option nombres activée
+            update_progress(70, "Aucune coloration numérique demandée")
+    except Exception:
+        traceback.print_exc()
+        update_progress(0, "Erreur coloration nombres")
         raise
 
     # --- Étape finale : sauvegarde et ouverture ---
