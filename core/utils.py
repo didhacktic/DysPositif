@@ -57,10 +57,28 @@ def _is_body_paragraph(paragraph) -> bool:
 def _iter_body_paragraphs(doc: Document):
     """
     Itère uniquement les paragraphes du corps principal (exclut headers/footers/tables/zones graphiques).
+    Méthode sûre utilisant l'accès direct à l'élément body du document XML.
     """
-    for p in doc.paragraphs:
-        if _is_body_paragraph(p):
-            yield p
+    try:
+        # Accès direct à l'élément body (exclut automatiquement headers/footers)
+        body_element = doc.element.body
+        # Parcourir uniquement les enfants directs de body qui sont des paragraphes
+        for child in body_element:
+            if child.tag.endswith('}p'):
+                # Vérifier que le parent n'est pas une cellule de tableau
+                parent = child.getparent()
+                if parent is not None and parent.tag == body_element.tag:
+                    # C'est un paragraphe direct du body (pas dans un tableau)
+                    from docx.text.paragraph import Paragraph
+                    try:
+                        yield Paragraph(child, doc.element.body)
+                    except Exception:
+                        pass
+    except Exception:
+        # Fallback si l'accès XML échoue : utiliser l'ancienne méthode avec filtre
+        for p in doc.paragraphs:
+            if _is_body_paragraph(p):
+                yield p
 
 def _iter_table_paragraphs(doc: Document):
     """
@@ -98,13 +116,18 @@ def _iter_shape_text_frames(doc: Document):
 # Fonctions principales
 # -----------------------
 def apply_font_consistently(doc: Document, police_name: str, taille_pt_value: int,
-                            include_shapes: bool = False, include_tables: bool = False):
-    """
-    Applique le nom de police et la taille aux runs du CORPS PRINCIPAL uniquement par défaut.
-    - include_shapes=False : ne touche pas les text boxes / shapes
-    - include_tables=False : ne touche pas les paragraphes des cellules de tableaux
-    - NE MODIFIE PAS run.font.spacing (tracking/kerning)
-    - Préserve autres propriétés de paragraphes (alignment, keep_with_next, page_break_before...)
+                            include_shapes: bool = False, include_tables: bool = False,
+                            include_headers_footers: bool = True):
+    """Applique nom et taille de police de manière large et sûre.
+
+    Portée par défaut élargie (régression corrigée) :
+      - Corps principal (paragraphes hors tableaux)
+      - Tableaux du corps (si include_tables=True)
+      - Headers / footers (paragraphes + tableaux) si include_headers_footers=True
+      - Shapes / text boxes (si include_shapes=True)
+
+    Ne modifie pas le tracking (run.font.spacing). Ne supprime pas d'autres
+    propriétés des paragraphes.
     """
     taille = Pt(taille_pt_value)
 
@@ -119,7 +142,6 @@ def apply_font_consistently(doc: Document, police_name: str, taille_pt_value: in
                 run.font.size = taille
             except Exception:
                 pass
-        # tenter de mettre à jour le style du paragraphe sans toucher les autres propriétés
         try:
             if p.style and hasattr(p.style, 'font'):
                 p.style.font.name = police_name
@@ -127,7 +149,7 @@ def apply_font_consistently(doc: Document, police_name: str, taille_pt_value: in
         except Exception:
             pass
 
-    # Option : appliquer dans les tableaux (cellules) si explicitement demandé
+    # Tableaux corps
     if include_tables:
         for p in _iter_table_paragraphs(doc):
             for run in p.runs:
@@ -139,14 +161,62 @@ def apply_font_consistently(doc: Document, police_name: str, taille_pt_value: in
                     run.font.size = taille
                 except Exception:
                     pass
+            try:
+                if p.style and hasattr(p.style, 'font'):
+                    p.style.font.name = police_name
+                    p.style.font.size = taille
+            except Exception:
+                pass
 
-    # Option : appliquer dans les shapes/text_frames si demandé
+    # Headers / Footers
+    if include_headers_footers:
+        try:
+            for section in doc.sections:
+                for container in (section.header, section.footer):
+                    for p in getattr(container, 'paragraphs', ( )):
+                        for run in p.runs:
+                            try:
+                                run.font.name = police_name
+                            except Exception:
+                                pass
+                            try:
+                                run.font.size = taille
+                            except Exception:
+                                pass
+                        try:
+                            if p.style and hasattr(p.style, 'font'):
+                                p.style.font.name = police_name
+                                p.style.font.size = taille
+                        except Exception:
+                            pass
+                    for table in getattr(container, 'tables', ( )):
+                        for row in getattr(table, 'rows', ( )):
+                            for cell in getattr(row, 'cells', ( )):
+                                for p in getattr(cell, 'paragraphs', ( )):
+                                    for run in p.runs:
+                                        try:
+                                            run.font.name = police_name
+                                        except Exception:
+                                            pass
+                                        try:
+                                            run.font.size = taille
+                                        except Exception:
+                                            pass
+                                    try:
+                                        if p.style and hasattr(p.style, 'font'):
+                                            p.style.font.name = police_name
+                                            p.style.font.size = taille
+                                    except Exception:
+                                        pass
+        except Exception:
+            pass
+
+    # Shapes
     if include_shapes:
         for shape, tf in _iter_shape_text_frames(doc):
             try:
-                # text_frame.paragraphs similaire à document.paragraphs (si implémenté)
-                for p in getattr(tf, "paragraphs", ()):
-                    for run in getattr(p, "runs", ()):
+                for p in getattr(tf, 'paragraphs', ( )):
+                    for run in getattr(p, 'runs', ( )):
                         try:
                             run.font.name = police_name
                         except Exception:
@@ -155,25 +225,55 @@ def apply_font_consistently(doc: Document, police_name: str, taille_pt_value: in
                             run.font.size = taille
                         except Exception:
                             pass
-            except Exception:
-                # fallback : shape may expose text via shape.text
-                try:
-                    text = getattr(shape, "text", None)
-                    if text is not None:
-                        # cannot set runs easily; skip to be safe
+                    try:
+                        if p.style and hasattr(p.style, 'font'):
+                            p.style.font.name = police_name
+                            p.style.font.size = taille
+                    except Exception:
                         pass
+            except Exception:
+                try:
+                    _ = getattr(shape, 'text', None)
                 except Exception:
                     pass
 
-def apply_line_spacing(doc: Document, interlignes_value: Optional[float] = None):
-    """
-    Applique l'interlignage (line spacing multiplier) aux paragraphes du corps principal uniquement.
-    """
+def apply_line_spacing(doc: Document, interlignes_value: Optional[float] = None,
+                       include_headers_footers: bool = True, include_tables: bool = True):
+    """Applique un interlignage (multiplicateur) sur paragraphes corps, tableaux
+    et headers/footers (régression corrigée)."""
     if interlignes_value is None:
         return
+    # Corps principal
     for p in _iter_body_paragraphs(doc):
         try:
             p.paragraph_format.line_spacing = interlignes_value
+        except Exception:
+            pass
+    # Tableaux du corps
+    if include_tables:
+        for p in _iter_table_paragraphs(doc):
+            try:
+                p.paragraph_format.line_spacing = interlignes_value
+            except Exception:
+                pass
+    # Headers / Footers
+    if include_headers_footers:
+        try:
+            for section in doc.sections:
+                for container in (section.header, section.footer):
+                    for p in getattr(container, 'paragraphs', ( )):
+                        try:
+                            p.paragraph_format.line_spacing = interlignes_value
+                        except Exception:
+                            pass
+                    for table in getattr(container, 'tables', ( )):
+                        for row in getattr(table, 'rows', ( )):
+                            for cell in getattr(row, 'cells', ( )):
+                                for p in getattr(cell, 'paragraphs', ( )):
+                                    try:
+                                        p.paragraph_format.line_spacing = interlignes_value
+                                    except Exception:
+                                        pass
         except Exception:
             pass
 
@@ -187,6 +287,76 @@ def apply_spacing_and_line_spacing(doc: Document, espacement: bool, interlignes:
     # Nous n'activons pas run.font.spacing (tracking) pour éviter l'effet très espacé.
     if interlignes:
         apply_line_spacing(doc, 1.5)
+        compress_double_empty_lines(doc)
+
+
+def compress_double_empty_lines(doc: Document,
+                                include_headers_footers: bool = True,
+                                include_tables: bool = True):
+    """Réduit toute séquence de paragraphes vides consécutifs à UNE seule ligne vide.
+
+    Doit être appelée APRÈS l'application de l'interlignage pour éviter des 
+    espaces verticaux excessifs lorsque l'option d'augmentation d'interligne est activée.
+    """
+    def _is_blank(paragraph) -> bool:
+        try:
+            return (paragraph.text or '').strip() == ''
+        except Exception:
+            return False
+
+    def _compress_paragraph_list(paragraphs):
+        prev_blank = False
+        for p in list(paragraphs):  # snapshot
+            if _is_blank(p):
+                if prev_blank:
+                    # supprimer ce paragraphe
+                    try:
+                        el = p._p
+                        parent = el.getparent()
+                        parent.remove(el)
+                    except Exception:
+                        pass
+                else:
+                    prev_blank = True
+            else:
+                prev_blank = False
+
+    # Corps principal (paragraphes directs du body)
+    try:
+        body_paragraphs = []
+        body_element = doc.element.body
+        # Import dynamique du wrapper Paragraph; fallback si non disponible
+        Paragraph = getattr(docx.text.paragraph, 'Paragraph', None)
+        for child in body_element:
+            if child.tag.endswith('}p'):
+                if Paragraph is not None:
+                    body_paragraphs.append(Paragraph(child, body_element))
+        _compress_paragraph_list(body_paragraphs)
+    except Exception:
+        pass
+
+    # Tableaux corps
+    if include_tables:
+        try:
+            for table in doc.tables:
+                for cell in table._cells:
+                    _compress_paragraph_list(cell.paragraphs)
+        except Exception:
+            pass
+
+    # Headers / Footers
+    if include_headers_footers:
+        try:
+            for section in doc.sections:
+                for container in (section.header, section.footer):
+                    _compress_paragraph_list(getattr(container, 'paragraphs', ()))
+                    if include_tables:
+                        for table in getattr(container, 'tables', ( )):
+                            for row in getattr(table, 'rows', ( )):
+                                for cell in getattr(row, 'cells', ( )):
+                                    _compress_paragraph_list(getattr(cell, 'paragraphs', ( )))
+        except Exception:
+            pass
 
 # -----------------------
 # Manipulation sûre de runs (split / clone / color)
