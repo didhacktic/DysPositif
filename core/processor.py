@@ -20,8 +20,8 @@
 #   si nécessaire (pour éviter que les traitements n'interfèrent entre eux).
 #
 # Compatibilité :
-# - Conserve la signature attendue par main.py : process_document(filepath, progress_callback=None)
-#   (progress_callback est ignoré car update_progress est global).
+# - La signature process_document(filepath, progress_callback=None, open_after=True)
+#   reste compatible avec les appels existants (open_after=True par défaut).
 #
 
 import os
@@ -48,11 +48,15 @@ from .numbers_position import apply_position_numbers
 from .numbers_multicolor import apply_multicolor_numbers
 
 
-def _save_output_and_open(doc: Document, input_filepath: str):
+def _save_output_and_open(doc: Document, input_filepath: str, open_after: bool = True) -> str:
     """
     Sauvegarde le document dans un sous-dossier 'DYS' à côté du fichier d'entrée,
-    en évitant d'écraser un fichier existant (ajoute (n) si besoin), puis ouvre le
-    fichier final avec l'application native du système.
+    en évitant d'écraser un fichier existant (ajoute (n) si besoin).
+
+    Si open_after est True : ouvre le fichier final avec l'application native du système.
+    Si open_after est False : ne lance pas l'application (permet un traitement batch).
+
+    Retourne le chemin complet du fichier de sortie (.docx).
     """
     # Calcul du dossier de sortie et nom de fichier
     folder = os.path.join(os.path.dirname(input_filepath), "DYS")
@@ -68,31 +72,41 @@ def _save_output_and_open(doc: Document, input_filepath: str):
     doc.save(output)
     update_progress(100, f"Terminé → {os.path.basename(output)}")
 
-    # Ouverture du fichier final selon l'OS
-    try:
-        if platform.system() == "Linux":
-            subprocess.call(["xdg-open", output])
-        elif platform.system() == "Darwin":
-            subprocess.call(["open", output])
-        else:
-            os.startfile(output)
-    except Exception:
-        # Ne pas planter l'application si l'ouverture échoue
-        update_progress(100, f"Sauvegardé → {os.path.basename(output)} (ouverture automatique impossible)")
-        return
+    # Ouverture automatique (si demandée)
+    if open_after:
+        try:
+            if platform.system() == "Linux":
+                subprocess.call(["xdg-open", output])
+            elif platform.system() == "Darwin":
+                subprocess.call(["open", output])
+            else:
+                # Windows
+                os.startfile(output)
+        except Exception:
+            # Ne pas planter l'application si l'ouverture échoue, on signale simplement
+            update_progress(100, f"Sauvegardé → {os.path.basename(output)} (ouverture automatique impossible)")
+    else:
+        # Mode batch : on n'ouvre pas le fichier
+        pass
+
+    return output
 
 
-def process_document(filepath: str, progress_callback=None):
+def process_document(filepath: str, progress_callback=None, open_after: bool = True) -> str:
     """
     Point d'entrée principal pour le traitement d'un .docx.
     - Ouvre le fichier
     - Applique la mise en forme de base via apply_base_formatting
     - Applique ensuite syllabes et/ou muettes selon les options utilisateur
     - Applique la coloration des nombres selon les options utilisateur
-    - Sauvegarde le résultat et l'ouvre
+    - Sauvegarde le résultat et l'ouvre (si open_after=True)
 
-    Signature compatible avec main.py : process_document(filepath, progress_callback=None)
-    (progress_callback est ignoré au profit de update_progress global).
+    Retourne le chemin du fichier de sortie (.docx).
+
+    Notes :
+    - open_after permet de désactiver l'ouverture automatique (utile en traitement
+      batch où l'on veut ouvrir le dossier final à la fin).
+    - progress_callback est ignoré par défaut (update_progress global est utilisé).
     """
     # Début : informer l'UI que le traitement commence
     update_progress(10, "Ouverture du document...")
@@ -116,7 +130,7 @@ def process_document(filepath: str, progress_callback=None):
         apply_base_formatting(doc, police, taille_pt, espacement, interlignes)
     except Exception:
         update_progress(0, "Échec mise en forme de base")
-        # On continue ? Ici on choisit de propager pour que l'UI affiche l'erreur.
+        # On choisit de propager pour que l'UI affiche l'erreur.
         raise
 
     # --- Étape 2 : traitements spécialisés (syllabes / muettes) ---
@@ -174,12 +188,14 @@ def process_document(filepath: str, progress_callback=None):
         update_progress(0, "Erreur coloration nombres")
         raise
 
-    # --- Étape finale : sauvegarde et ouverture ---
+    # --- Étape finale : sauvegarde et ouverture conditionnelle ---
     try:
         update_progress(90, "Sauvegarde...")
-        _save_output_and_open(doc, filepath)
+        output_path = _save_output_and_open(doc, filepath, open_after=open_after)
     except Exception:
         update_progress(0, "Échec sauvegarde / ouverture")
         raise
+
+    return output_path
 
 # Fin du module

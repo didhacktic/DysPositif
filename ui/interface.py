@@ -1,10 +1,21 @@
 # ui/interface.py
 """
-Interface graphique principale – VERSION FINALE 100% FONCTIONNELLE
-Barre de progression, erreurs dans la fenêtre, tout propre
+Interface graphique principale – réordonnée avec file d'attente de fichiers
+- Conserve la "boîte des paramètres" inchangée (même widgets / variables)
+- Ordre (haut -> bas) :
+  * titre / sous-titre
+  * bouton bleu "SÉLECTIONNER DES FICHIERS" (sélection multiple)
+  * fenêtre de visualisation (file d'attente)
+  * cadre des paramètres (inchangé)
+  * bouton bleu "CONVERTIR" (envoie la liste des fichiers au callback)
+  * barre de progression
+  * boîte de dialogue des messages (scrolledtext)
+Notes :
+- create_interface reçoit un callback. Ce callback doit accepter une liste de chemins (list[str]).
+  Exemple minimal côté main.py : create_interface(root, lambda files: [handle_file(f) for f in files])
 """
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+from tkinter import ttk, scrolledtext, messagebox, filedialog
 from config.settings import options
 
 # Variables globales pour progression
@@ -37,6 +48,15 @@ def update_progress(value: int, text: str):
 root = None
 
 def create_interface(main_root, callback):
+    """
+    Crée l'interface.
+
+    Paramètres :
+    - main_root : instance de Tk()
+    - callback : fonction appelée quand l'utilisateur clique sur "CONVERTIR".
+                 Elle recevra la liste des fichiers en file d'attente (list[str]).
+                 Exemple côté main.py : create_interface(root, lambda files: [handle_file(f) for f in files])
+    """
     global root, progress_bar, progress_text
     root = main_root
     root.title("Dys’Positif – Adaptation pour la dyslexie")
@@ -44,7 +64,7 @@ def create_interface(main_root, callback):
     root.configure(bg="#f5f5f5")
     root.resizable(False, False)
 
-    # === Mise à jour des options par défaut ===
+    # === Mise à jour des options par défaut === (inchangée)
     options.update({
         'police': tk.StringVar(value="OpenDyslexic"),
         'taille': tk.IntVar(value=16),
@@ -59,22 +79,79 @@ def create_interface(main_root, callback):
     })
     v = options
 
-    # === En-tête ===
+    # === En-tête === (titre + sous-titre existants)
     tk.Label(root, text="Dys’Positif", font=("Helvetica", 32, "bold"), bg="#f5f5f5", fg="#2c3e50").pack(pady=20)
     tk.Label(root, text="PDF • DOCX → Document adapté dyslexie", font=("Helvetica", 13), bg="#f5f5f5", fg="#555555").pack(pady=5)
 
-    # === Bouton central ===
-    tk.Button(
+    # === Bouton bleu : SÉLECTIONNER DES FICHIERS (sélection multiple) ===
+    select_btn = tk.Button(
         root,
-        text="SÉLECTIONNER UN FICHIER\n(PDF ou DOCX)",
-        font=("Helvetica", 18, "bold"),
+        text="SÉLECTIONNER DES FICHIERS",
+        font=("Helvetica", 16, "bold"),
         bg="#0066cc", fg="white",
-        width=38, height=3,
+        width=28, height=2,
         relief="raised", bd=6,
-        command=callback
-    ).pack(pady=(20, 35))
+    )
+    select_btn.pack(pady=(12, 6))
 
-    # === Boîte des paramètres ===
+    # === Fenêtre de visualisation : file d'attente ===
+    queue_frame = tk.Frame(root, bg="#f5f5f5")
+    queue_frame.pack(padx=50, fill="x")
+
+    tk.Label(queue_frame, text="Fichiers en file d'attente :", font=("Helvetica", 12, "bold"), bg="#f5f5f5").pack(anchor="w", pady=(4, 6))
+    listbox_frame = tk.Frame(queue_frame)
+    listbox_frame.pack(fill="both", expand=False)
+
+    queue_scroll = tk.Scrollbar(listbox_frame, orient="vertical")
+    queue_listbox = tk.Listbox(
+        listbox_frame,
+        height=6,
+        yscrollcommand=queue_scroll.set,
+        selectmode="extended",
+        font=("Helvetica", 11)
+    )
+    queue_scroll.config(command=queue_listbox.yview)
+    queue_listbox.pack(side="left", fill="x", expand=True)
+    queue_scroll.pack(side="right", fill="y")
+
+    # petits boutons pour gérer la file (supprimer sélection / vider)
+    queue_ctrl = tk.Frame(queue_frame, bg="#f5f5f5")
+    queue_ctrl.pack(anchor="e", pady=(6, 0))
+    btn_remove = tk.Button(queue_ctrl, text="Retirer sélection", font=("Helvetica", 10), command=lambda: _remove_selected())
+    btn_clear = tk.Button(queue_ctrl, text="Vider la file", font=("Helvetica", 10), command=lambda: _clear_queue())
+    btn_remove.pack(side="right", padx=6)
+    btn_clear.pack(side="right", padx=6)
+
+    def _add_files(paths):
+        """Ajoute des chemins à la listbox en évitant les doublons."""
+        existing = set(queue_listbox.get(0, "end"))
+        for p in paths:
+            if p not in existing:
+                queue_listbox.insert("end", p)
+
+    def _remove_selected():
+        sel = list(queue_listbox.curselection())
+        # supprimer en partant de la fin pour éviter décalage d'index
+        for idx in reversed(sel):
+            queue_listbox.delete(idx)
+
+    def _clear_queue():
+        queue_listbox.delete(0, "end")
+
+    def _get_queue_list():
+        return list(queue_listbox.get(0, "end"))
+
+    def _on_select_files():
+        paths = filedialog.askopenfilenames(
+            title="Sélectionner des fichiers (PDF / DOCX / ODT)",
+            filetypes=[("Documents", "*.pdf *.docx *.odt"), ("PDF", "*.pdf"), ("DOCX", "*.docx"), ("ODT", "*.odt"), ("Tous", "*.*")]
+        )
+        if paths:
+            _add_files(paths)
+
+    select_btn.config(command=_on_select_files)
+
+    # === Boîte des paramètres === (conservée strictement telle quelle)
     params_frame = tk.Frame(root, bg="white", relief="groove", bd=8, padx=35, pady=15)
     params_frame.pack(pady=10, padx=50, fill="both", expand=True)
 
@@ -89,7 +166,7 @@ def create_interface(main_root, callback):
         font=("Helvetica", 11)
     ).pack(anchor="w", pady=(0, 10))
 
-   # Taille
+    # Taille
     taille_frame = tk.Frame(params_frame, bg="white")
     taille_frame.pack(anchor="w", pady=(0, 10))
     tk.Label(taille_frame, text="Taille :", font=("Helvetica", 12, "bold"), bg="white").pack(side="left")
@@ -104,7 +181,7 @@ def create_interface(main_root, callback):
         font=("Helvetica", 10)
     ).pack(side="left", padx=(10, 0))
 
-    # Espacement
+    # Espacement + Interligne
     tk.Label(params_frame, text="Espacement", font=("Helvetica", 12, "bold"), bg="white").pack(anchor="w", pady=(5, 4))
     tk.Checkbutton(params_frame, text="Espacement entre lettres : 2,4 pt", variable=v['espacement'], bg="white", font=("Helvetica", 11)).pack(anchor="w", pady=3)
     tk.Checkbutton(params_frame, text="Interlignage : 1,5", variable=v['interligne'], bg="white", font=("Helvetica", 11)).pack(anchor="w", pady=3)
@@ -119,7 +196,7 @@ def create_interface(main_root, callback):
     tk.Checkbutton(params_frame, text="Par position (u=bleu, d=rouge, c=vert)", variable=v['position'], bg="white", font=("Helvetica", 11)).pack(anchor="w", padx=25, pady=3)
     tk.Checkbutton(params_frame, text="Multicolore", variable=v['multicolore'], bg="white", font=("Helvetica", 11)).pack(anchor="w", padx=25, pady=3)
 
-    # Synchronisation des modes couleur
+    # Synchronisation des modes couleur (inchangé)
     def sync_color_modes(*args):
         if v['multicolore'].get():
             v['position'].set(False)
@@ -148,9 +225,41 @@ def create_interface(main_root, callback):
         font=("Helvetica", 11)
     ).pack(side="left", padx=(20, 0))
 
+    # === Bouton CONVERTIR ===
+    convert_btn = tk.Button(
+        root,
+        text="CONVERTIR",
+        font=("Helvetica", 16, "bold"),
+        bg="#0066cc", fg="white",
+        width=20, height=2,
+        relief="raised", bd=6,
+        command=lambda: _on_convert()
+    )
+    convert_btn.pack(pady=(10, 8))
+
+    def _on_convert():
+        files = _get_queue_list()
+        if not files:
+            show_info("Aucun fichier", "La file est vide. Sélectionnez des fichiers avant de convertir.")
+            return
+        try:
+            # callback attendu : fonction qui accepte list[str]
+            callback(files)
+        except TypeError:
+            # si le callback n'accepte qu'un seul fichier, on essaie d'appeler pour chaque fichier
+            for f in files:
+                try:
+                    callback(f)
+                except Exception as e:
+                    show_error("Erreur callback", str(e))
+        except Exception as e:
+            show_error("Erreur", str(e))
+
     # === BARRE DE PROGRESSION ===
     progress_bar = ttk.Progressbar(root, mode="determinate", maximum=100, length=680)
-    progress_bar.pack(pady=15)
+    progress_bar.pack(pady=12)
+
+    # === BOÎTE DE MESSAGES (scrolledtext) ===
     progress_text = scrolledtext.ScrolledText(
         root,
         height=6,
