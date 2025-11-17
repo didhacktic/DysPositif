@@ -131,13 +131,47 @@ def apply_syllables(doc):
             if not p.text.strip():
                 continue
             texte = p.text
+            
+            # Sauvegarder le formatage du premier run pour le préserver
+            original_font_name = None
+            original_font_size = None
+            original_font_bold = None
+            original_font_italic = None
+            if len(p.runs) > 0:
+                first_run = p.runs[0]
+                original_font_name = first_run.font.name
+                original_font_size = first_run.font.size
+                original_font_bold = first_run.font.bold
+                original_font_italic = first_run.font.italic
+            
             p.clear()
             i = 0
             while i < len(texte):
                 c = texte[i]
                 # Conserver les séparateurs et ponctuations inchangés
                 if c.isspace() or c in SEPARATORS:
-                    p.add_run(c)
+                    run = p.add_run(c)
+                    # Préserver le formatage original
+                    if original_font_name:
+                        try:
+                            run.font.name = original_font_name
+                        except Exception:
+                            pass
+                    if original_font_size:
+                        try:
+                            run.font.size = original_font_size
+                        except Exception:
+                            pass
+                    if original_font_bold is not None:
+                        try:
+                            run.font.bold = original_font_bold
+                        except Exception:
+                            pass
+                    if original_font_italic is not None:
+                        try:
+                            run.font.italic = original_font_italic
+                        except Exception:
+                            pass
                     i += 1
                     continue
 
@@ -189,6 +223,27 @@ def apply_syllables(doc):
                             run.font.color.rgb = color
                         except Exception:
                             pass
+                        # Préserver le formatage original
+                        if original_font_name:
+                            try:
+                                run.font.name = original_font_name
+                            except Exception:
+                                pass
+                        if original_font_size:
+                            try:
+                                run.font.size = original_font_size
+                            except Exception:
+                                pass
+                        if original_font_bold is not None:
+                            try:
+                                run.font.bold = original_font_bold
+                            except Exception:
+                                pass
+                        if original_font_italic is not None:
+                            try:
+                                run.font.italic = original_font_italic
+                            except Exception:
+                                pass
                         counter[0] += 1
                         pos += len(part)
 
@@ -200,10 +255,52 @@ def apply_syllables(doc):
                             run.font.color.rgb = COUL_SYLL[counter[0] % len(COUL_SYLL)]
                         except Exception:
                             pass
+                        # Préserver le formatage original
+                        if original_font_name:
+                            try:
+                                run.font.name = original_font_name
+                            except Exception:
+                                pass
+                        if original_font_size:
+                            try:
+                                run.font.size = original_font_size
+                            except Exception:
+                                pass
+                        if original_font_bold is not None:
+                            try:
+                                run.font.bold = original_font_bold
+                            except Exception:
+                                pass
+                        if original_font_italic is not None:
+                            try:
+                                run.font.italic = original_font_italic
+                            except Exception:
+                                pass
                         counter[0] += 1
 
                     i += len(mot)
                 else:
                     # caractère isolé (non matched by WORD_PATTERN) => ajouter tel quel
-                    p.add_run(texte[i])
+                    run = p.add_run(texte[i])
+                    # Préserver le formatage original
+                    if original_font_name:
+                        try:
+                            run.font.name = original_font_name
+                        except Exception:
+                            pass
+                    if original_font_size:
+                        try:
+                            run.font.size = original_font_size
+                        except Exception:
+                            pass
+                    if original_font_bold is not None:
+                        try:
+                            run.font.bold = original_font_bold
+                        except Exception:
+                            pass
+                    if original_font_italic is not None:
+                        try:
+                            run.font.italic = original_font_italic
+                        except Exception:
+                            pass
                     i += 1
