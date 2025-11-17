@@ -71,12 +71,15 @@ def _iter_vml_textbox_paragraphs(doc):
     Ces zones ne sont pas accessibles via doc.inline_shapes et nécessitent
     un parcours direct de la structure XML.
     """
+    # Namespace URIs pour VML (pas dans le nsmap par défaut de python-docx)
+    VML_NS = 'urn:schemas-microsoft-com:vml'
+    
     body = doc.element.body
     
     # Parcourir tous les éléments w:pict (Picture/VML container)
     for pict_elem in body.iter(qn('w:pict')):
-        # Chercher les v:textbox à l'intérieur
-        for textbox_elem in pict_elem.iter(qn('v:textbox')):
+        # Chercher les v:textbox à l'intérieur (en utilisant l'URI complet)
+        for textbox_elem in pict_elem.iter('{%s}textbox' % VML_NS):
             # Chercher w:txbxContent (contenu du textbox)
             for txbx_content in textbox_elem.iter(qn('w:txbxContent')):
                 # Récupérer tous les paragraphes (w:p) dans le contenu
