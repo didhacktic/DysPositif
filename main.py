@@ -88,13 +88,7 @@ def _open_folder(path: str):
     """Open file manager on path (cross-platform)."""
     try:
         if platform.system() == "Linux":
-            # Essayer nautilus en premier (gestionnaire de fichiers GNOME)
-            # Si ça échoue, fallback vers xdg-open
-            try:
-                subprocess.Popen(["nautilus", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except FileNotFoundError:
-                # Si nautilus n'est pas disponible, utiliser xdg-open
-                subprocess.Popen(["xdg-open", path])
+            subprocess.Popen(["xdg-open", path])
         elif platform.system() == "Darwin":
             subprocess.Popen(["open", path])
         else:
