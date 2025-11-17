@@ -26,6 +26,7 @@ from docx import Document
 from docx.shared import Pt
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
+from docx.text.paragraph import Paragraph
 import docx
 
 # -----------------------
@@ -112,6 +113,33 @@ def _iter_shape_text_frames(doc: Document):
     except Exception:
         pass
 
+def _iter_vml_textbox_paragraphs(doc: Document):
+    """
+    Itère les paragraphes contenus dans les zones de texte VML (legacy Word text boxes).
+    
+    Les zones de texte VML sont stockées dans la structure XML suivante :
+    w:pict → v:textbox → w:txbxContent → w:p (paragraphs)
+    
+    Ces zones ne sont pas accessibles via doc.inline_shapes et nécessitent
+    un parcours direct de la structure XML.
+    """
+    body = doc.element.body
+    
+    # Parcourir tous les éléments w:pict (Picture/VML container)
+    for pict_elem in body.iter(qn('w:pict')):
+        # Chercher les v:textbox à l'intérieur
+        for textbox_elem in pict_elem.iter(qn('v:textbox')):
+            # Chercher w:txbxContent (contenu du textbox)
+            for txbx_content in textbox_elem.iter(qn('w:txbxContent')):
+                # Récupérer tous les paragraphes (w:p) dans le contenu
+                for p_elem in txbx_content.iter(qn('w:p')):
+                    try:
+                        # Créer un objet Paragraph python-docx à partir de l'élément XML
+                        yield Paragraph(p_elem, txbx_content)
+                    except Exception:
+                        # Si la création du Paragraph échoue, continuer
+                        pass
+
 # -----------------------
 # Fonctions principales
 # -----------------------
@@ -124,7 +152,7 @@ def apply_font_consistently(doc: Document, police_name: str, taille_pt_value: in
       - Corps principal (paragraphes hors tableaux)
       - Tableaux du corps (si include_tables=True)
       - Headers / footers (paragraphes + tableaux) si include_headers_footers=True
-      - Shapes / text boxes (si include_shapes=True)
+      - Shapes / text boxes DrawingML ET VML (si include_shapes=True)
 
     Ne modifie pas le tracking (run.font.spacing). Ne supprime pas d'autres
     propriétés des paragraphes.
@@ -211,7 +239,7 @@ def apply_font_consistently(doc: Document, police_name: str, taille_pt_value: in
         except Exception:
             pass
 
-    # Shapes
+    # Shapes (DrawingML text boxes)
     if include_shapes:
         for shape, tf in _iter_shape_text_frames(doc):
             try:
@@ -236,6 +264,24 @@ def apply_font_consistently(doc: Document, police_name: str, taille_pt_value: in
                     _ = getattr(shape, 'text', None)
                 except Exception:
                     pass
+        
+        # VML text boxes (legacy Word text boxes) - always included when shapes are included
+        for p in _iter_vml_textbox_paragraphs(doc):
+            for run in p.runs:
+                try:
+                    run.font.name = police_name
+                except Exception:
+                    pass
+                try:
+                    run.font.size = taille
+                except Exception:
+                    pass
+            try:
+                if p.style and hasattr(p.style, 'font'):
+                    p.style.font.name = police_name
+                    p.style.font.size = taille
+            except Exception:
+                pass
 
 def apply_line_spacing(doc: Document, interlignes_value: Optional[float] = None,
                        include_headers_footers: bool = True, include_tables: bool = True):

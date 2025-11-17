@@ -17,6 +17,8 @@ import sys
 import re
 import os
 from docx.shared import RGBColor
+from docx.oxml.ns import qn
+from docx.text.paragraph import Paragraph
 
 # Ajout du chemin src du dépôt pylirecouleur (si présent dans l'arborescence du projet)
 # On insère ce chemin au début de sys.path afin que l'import suivant trouve le module.
@@ -59,9 +61,36 @@ def normalize(word: str) -> str:
     """Retourne une version normalisée (minuscule, accents mappés) du mot."""
     return word.lower().translate(ACCENT_MAP)
 
+def _iter_vml_textbox_paragraphs(doc):
+    """
+    Itère les paragraphes contenus dans les zones de texte VML (legacy Word text boxes).
+    
+    Les zones de texte VML sont stockées dans la structure XML suivante :
+    w:pict → v:textbox → w:txbxContent → w:p (paragraphs)
+    
+    Ces zones ne sont pas accessibles via doc.inline_shapes et nécessitent
+    un parcours direct de la structure XML.
+    """
+    body = doc.element.body
+    
+    # Parcourir tous les éléments w:pict (Picture/VML container)
+    for pict_elem in body.iter(qn('w:pict')):
+        # Chercher les v:textbox à l'intérieur
+        for textbox_elem in pict_elem.iter(qn('v:textbox')):
+            # Chercher w:txbxContent (contenu du textbox)
+            for txbx_content in textbox_elem.iter(qn('w:txbxContent')):
+                # Récupérer tous les paragraphes (w:p) dans le contenu
+                for p_elem in txbx_content.iter(qn('w:p')):
+                    try:
+                        # Créer un objet Paragraph python-docx à partir de l'élément XML
+                        yield Paragraph(p_elem, txbx_content)
+                    except Exception:
+                        # Si la création du Paragraph échoue, continuer
+                        pass
+
 def apply_syllables(doc):
     """
-    Parcourt le document (paragraphes, cellules de tableau, zones texte inline)
+    Parcourt le document (paragraphes, cellules de tableau, zones texte inline, zones texte VML)
     et remplace chaque mot par des runs colorés par syllabe.
 
     Méthode :
@@ -72,22 +101,31 @@ def apply_syllables(doc):
       sur la graphie originale (heuristique pour gérer les accents).
     """
     counter = [0]  # compteur partagé pour alterner les couleurs
-    containers = [doc]
-
+    
+    # Collecter tous les paragraphes à traiter
+    paragraphs_to_process = []
+    
+    # Paragraphes du document principal
+    paragraphs_to_process.extend(doc.paragraphs)
+    
     # Inclure les cellules de tableaux
     for table in doc.tables:
-        containers.extend(table._cells)
+        for cell in table._cells:
+            paragraphs_to_process.extend(cell.paragraphs)
 
-    # Inclure les zones de texte inline (s'il y en a)
+    # Inclure les zones de texte inline DrawingML (s'il y en a)
     for shape in doc.inline_shapes:
         if hasattr(shape, 'text_frame') and shape.text_frame:
-            containers.append(shape.text_frame)
+            paragraphs_to_process.extend(shape.text_frame.paragraphs)
+    
+    # Inclure les zones de texte VML (legacy Word text boxes)
+    paragraphs_to_process.extend(_iter_vml_textbox_paragraphs(doc))
 
     # Séparateurs considérés 'à part' (y compris tirets/traits) => on les rend tels quels
     SEPARATORS = set(" \t\n\r.,;:!?()[]{}\u00ab\u00bb\u201c\u201d'’/\\-–—*+=<>@#$%^&~")
 
-    for container in containers:
-        for p in container.paragraphs:
+    # Traiter tous les paragraphes collectés
+    for p in paragraphs_to_process:
             if not p.text.strip():
                 continue
             texte = p.text

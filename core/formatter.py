@@ -49,8 +49,8 @@ def apply_base_formatting(doc: Document, police: str, taille_pt: int, espacement
         pass
 
     # Appliquer la police et la taille de manière cohérente sur l'ensemble du document
-    # Étendre la portée : inclure tableaux + headers/footers
-    apply_font_consistently(doc, police, taille_pt, include_tables=True, include_headers_footers=True)
+    # Étendre la portée : inclure tableaux + headers/footers + shapes (DrawingML et VML)
+    apply_font_consistently(doc, police, taille_pt, include_tables=True, include_headers_footers=True, include_shapes=True)
 
     # Appliquer l'espacement et l'interlignage
     apply_spacing_and_line_spacing(doc, espacement, interlignes)
