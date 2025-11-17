@@ -408,11 +408,22 @@ def split_run_and_color(run, start: int, end: int, color_hex: str) -> None:
     middle = text[start:end]
     tail = text[end:]
 
-    # remplacer le run original par head
+    # clone original element BEFORE mutating run.text to ensure <w:t> nodes are present
+    try:
+        original_r = deepcopy(run._r)
+    except Exception:
+        original_r = deepcopy(run._r)
+
+    # remplacer le run original par head (mutate python-docx run wrapper)
     run.text = head
 
-    middle_el = _clone_run_element_with_text(run, middle)
-    tail_el = _clone_run_element_with_text(run, tail)
+    # create middle/tail elements from the original cloned element and set text
+    middle_el = deepcopy(original_r)
+    for t in middle_el.iterfind('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t'):
+        t.text = middle
+    tail_el = deepcopy(original_r)
+    for t in tail_el.iterfind('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t'):
+        t.text = tail
 
     _insert_run_after(run, middle_el)
     # middle_el est un element; on insère tail après middle
