@@ -88,9 +88,15 @@ def _open_folder(path: str):
     """Open file manager on path (cross-platform)."""
     try:
         if platform.system() == "Linux":
-            subprocess.call(["xdg-open", path])
+            # Essayer nautilus en premier (gestionnaire de fichiers GNOME)
+            # Si ça échoue, fallback vers xdg-open
+            try:
+                subprocess.Popen(["nautilus", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except FileNotFoundError:
+                # Si nautilus n'est pas disponible, utiliser xdg-open
+                subprocess.Popen(["xdg-open", path])
         elif platform.system() == "Darwin":
-            subprocess.call(["open", path])
+            subprocess.Popen(["open", path])
         else:
             os.startfile(path)
     except Exception as e:
@@ -114,10 +120,10 @@ def _process_next_in_queue():
                     _last_output_folder = None
                 _suppress_open_for_batch = False
                 if folder:
-                    root.after(0, lambda: update_progress(0, f"Fin batch — ouverture dossier: {folder}"))
+                    root.after(0, lambda: update_progress(0, f"Fin du traitement en lot — {os.path.basename(folder)}"))
                     root.after(0, lambda: _open_folder(folder))
                 else:
-                    root.after(0, lambda: update_progress(0, "Fin batch — aucun dossier trouvé à ouvrir"))
+                    root.after(0, lambda: update_progress(0, "Fin du traitement en lot — aucun dossier trouvé"))
             else:
                 root.after(0, lambda: update_progress(0, "Prêt à traiter un document."))
             return
