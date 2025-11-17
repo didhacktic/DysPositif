@@ -124,42 +124,34 @@ def process_document(filepath: str, progress_callback=None, open_after: bool = T
     syllabes_on = options['syllabes'].get()
     muettes_on = options['griser_muettes'].get()
 
-    # --- Étape 1 : mise en forme de base (police, taille, espacement, interligne) ---
-    try:
-        update_progress(20, "Application de la mise en forme de base...")
-        apply_base_formatting(doc, police, taille_pt, espacement, interlignes)
-    except Exception:
-        update_progress(0, "Échec mise en forme de base")
-        # On choisit de propager pour que l'UI affiche l'erreur.
-        raise
-
-    # --- Étape 2 : traitements spécialisés (syllabes / muettes) ---
+    # --- Étape 1 : traitements spécialisés (syllabes / muettes) - AVANT mise en forme ---
     try:
         # Cas : si seul syllabes activé
         if syllabes_on and not muettes_on:
-            update_progress(50, "Coloration syllabique...")
+            update_progress(20, "Coloration syllabique...")
             apply_syllables(doc)
 
         # Cas : si seules muettes activées
         elif muettes_on and not syllabes_on:
-            update_progress(50, "Grisage des lettres muettes...")
+            update_progress(20, "Grisage des lettres muettes...")
             apply_mute_letters(doc)
 
         # Cas : les deux activés -> utiliser la nouvelle fonction dédiée apply_syllables_mute
         elif syllabes_on and muettes_on:
+            update_progress(20, "Coloration syllabique + lettres muettes...")
             # apply_syllables_mute retourne un Document résultant (avec syllabes+muettes appliqués)
             doc = apply_syllables_mute(doc, filepath)
 
-        # Cas : aucun traitement spécial -> on garde seulement la mise en forme de base
+        # Cas : aucun traitement spécial
         else:
-            update_progress(50, "Aucun traitement syllabique/muettes demandé")
+            update_progress(20, "Aucun traitement syllabique/muettes demandé")
     except Exception:
         # Log minimal et propagation (main.py / UI doit afficher l'erreur)
         traceback.print_exc()
         update_progress(0, "Erreur durant les traitements spécialisés")
         raise
 
-    # --- Étape 3 : coloration des nombres selon les options UI ---
+    # --- Étape 2 : coloration des nombres - AVANT mise en forme ---
     try:
         # options['position'] et options['multicolore'] sont des tk.Variable dans l'UI.
         # On est défensif : utiliser options.get() puis .get() si présent.
@@ -170,22 +162,31 @@ def process_document(filepath: str, progress_callback=None, open_after: bool = T
 
         # L'UI synchronise déjà les deux cases (mutuellement exclusives), mais on gère tous les cas.
         if multi_val and not pos_val:
-            update_progress(70, "Coloration multicolore des nombres...")
+            update_progress(40, "Coloration multicolore des nombres...")
             apply_multicolor_numbers(doc)
         elif pos_val and not multi_val:
-            update_progress(70, "Coloration par position des nombres...")
+            update_progress(40, "Coloration par position des nombres...")
             apply_position_numbers(doc)
         elif pos_val and multi_val:
             # cas improbable puisque l'UI empêche normalement les deux cochés,
             # donner priorité à multicolore pour éviter comportement inattendu.
-            update_progress(70, "Coloration multicolore des nombres (priorité multicolore)...")
+            update_progress(40, "Coloration multicolore des nombres (priorité multicolore)...")
             apply_multicolor_numbers(doc)
         else:
             # aucune option nombres activée
-            update_progress(70, "Aucune coloration numérique demandée")
+            update_progress(40, "Aucune coloration numérique demandée")
     except Exception:
         traceback.print_exc()
         update_progress(0, "Erreur coloration nombres")
+        raise
+
+    # --- Étape 3 : mise en forme de base FINALE (police, taille, espacement, interligne) ---
+    # Appliquée EN DERNIER pour s'appliquer sur tous les runs colorés
+    try:
+        update_progress(70, "Application finale de la mise en forme...")
+        apply_base_formatting(doc, police, taille_pt, espacement, interlignes)
+    except Exception:
+        update_progress(0, "Échec mise en forme finale")
         raise
 
     # --- Étape finale : sauvegarde et ouverture conditionnelle ---
