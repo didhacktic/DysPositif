@@ -61,7 +61,7 @@ def normalize(word: str) -> str:
 
 def apply_syllables(doc):
     """
-    Parcourt le document (paragraphes, cellules de tableau, zones texte inline)
+    Parcourt le document (paragraphes, cellules de tableau, zones texte inline, zones de texte VML)
     et remplace chaque mot par des runs colorés par syllabe.
 
     Méthode :
@@ -71,6 +71,8 @@ def apply_syllables(doc):
       fournie par lirecouleur, puis on recrée des runs colorés en s'alignant
       sur la graphie originale (heuristique pour gérer les accents).
     """
+    from core.utils import _iter_textbox_paragraphs
+    
     counter = [0]  # compteur partagé pour alterner les couleurs
     containers = [doc]
 
@@ -82,88 +84,150 @@ def apply_syllables(doc):
     for shape in doc.inline_shapes:
         if hasattr(shape, 'text_frame') and shape.text_frame:
             containers.append(shape.text_frame)
-
-    # Séparateurs considérés 'à part' (y compris tirets/traits) => on les rend tels quels
-    SEPARATORS = set(" \t\n\r.,;:!?()[]{}\u00ab\u00bb\u201c\u201d'’/\\-–—*+=<>@#$%^&~")
-
+    
+    # Traiter d'abord les containers standards
+    all_paragraphs = []
     for container in containers:
-        for p in container.paragraphs:
-            if not p.text.strip():
+        all_paragraphs.extend(container.paragraphs)
+    
+    # Ajouter les paragraphes des zones de texte VML
+    all_paragraphs.extend(_iter_textbox_paragraphs(doc))
+
+    # Séparateurs (hors espaces) considérés 'à part' => on les rend tels quels
+    # NOTE: Les espaces ne sont PAS dans SEPARATORS pour permettre leur attachement aux mots
+    SEPARATORS = set("\t\n\r.,;:!?()[]{}\u00ab\u00bb\u201c\u201d''/\\-–—*+=<>@#$%^&~")
+
+    for p in all_paragraphs:
+        if not p.text.strip():
+            continue
+        texte = p.text
+        
+        # Préserver le format du paragraphe avant de le vider
+        # Sauvegarder les propriétés importantes pour éviter les problèmes de mise en page
+        try:
+            # Sauvegarder l'alignement, l'espacement, etc.
+            para_format = p.paragraph_format
+            keep_together = para_format.keep_together
+            keep_with_next = para_format.keep_with_next
+            widow_control = para_format.widow_control
+        except:
+            keep_together = None
+            keep_with_next = None
+            widow_control = None
+        
+        p.clear()
+        
+        # Restaurer les propriétés de paragraphe pour éviter les ruptures
+        try:
+            if keep_together is not None:
+                p.paragraph_format.keep_together = True  # Forcer à garder ensemble
+            if keep_with_next is not None:
+                p.paragraph_format.keep_with_next = False  # Ne pas forcer avec le suivant
+            if widow_control is not None:
+                p.paragraph_format.widow_control = True
+            # Désactiver les sauts de page automatiques
+            p.paragraph_format.page_break_before = False
+        except:
+            pass
+        i = 0
+        while i < len(texte):
+            c = texte[i]
+            
+            # Traiter les retours à la ligne et tabulations
+            if c in '\n\r\t':
+                p.add_run(c)
+                i += 1
                 continue
-            texte = p.text
-            p.clear()
-            i = 0
-            while i < len(texte):
-                c = texte[i]
-                # Conserver les séparateurs et ponctuations inchangés
-                if c.isspace() or c in SEPARATORS:
-                    p.add_run(c)
+            
+            # Traiter les séparateurs (hors espaces)
+            if c in SEPARATORS:
+                # Collecter les séparateurs consécutifs
+                sep_start = i
+                while i < len(texte) and texte[i] in SEPARATORS:
                     i += 1
+                p.add_run(texte[sep_start:i])
+                continue
+            
+            # Traiter les espaces seuls (pas suivis d'un mot)
+            if c == ' ':
+                # Regarder si suivi d'un mot ou d'autres espaces
+                space_start = i
+                while i < len(texte) and texte[i] == ' ':
+                    i += 1
+                # Si pas de mot après les espaces, les ajouter seuls
+                if i >= len(texte) or not WORD_PATTERN.match(texte[i:]):
+                    p.add_run(texte[space_start:i])
                     continue
+                # Sinon, les espaces seront traités avec le mot suivant
+                spaces_before = texte[space_start:i]
+            else:
+                spaces_before = ''
 
-                match = WORD_PATTERN.match(texte[i:])
-                if match:
-                    mot = match.group()
-                    mot_norm = normalize(mot)
+            match = WORD_PATTERN.match(texte[i:])
+            if match:
+                mot = match.group()
+                mot_norm = normalize(mot)
 
-                    # Segmentation via lirecouleur.pylirecouleur
+                # Segmentation via lirecouleur
+                try:
+                    syll_parts = syllables(mot_norm)
+                except Exception:
+                    syll_parts = [mot]  # fallback: mot entier
+
+                # Collecter les espaces APRÈS le mot pour les attacher au dernier run
+                next_pos = i + len(mot)
+                spaces_after = ''
+                while next_pos < len(texte) and texte[next_pos] == ' ':
+                    spaces_after += texte[next_pos]
+                    next_pos += 1
+
+                # Ajouter d'abord les espaces avant (si collectés précédemment)
+                if spaces_before:
+                    # Attacher aux espaces le même run que la première syllabe
+                    # Pour éviter une rupture, on les ajoute au début du mot
+                    pass  # Seront ajoutés avec la première syllabe
+
+                # Recomposer les syllabes avec la graphie d'origine
+                pos = 0
+                for si, syl in enumerate(syll_parts):
+                    target = syl
+                    L = len(target)
+                    part = mot[pos:pos+L] if pos+L <= len(mot) else mot[pos:]
+                    
+                    # Ajouter les espaces avant avec la première syllabe
+                    if si == 0 and spaces_before:
+                        part = spaces_before + part
+                    
+                    # Ajouter les espaces après avec la dernière syllabe
+                    if si == len(syll_parts) - 1 and spaces_after:
+                        part = part + spaces_after
+                    
+                    # Créer run coloré
+                    run = p.add_run(part)
+                    color = COUL_SYLL[counter[0] % len(COUL_SYLL)]
                     try:
-                        syll_parts = syllables(mot_norm)
+                        run.font.color.rgb = color
                     except Exception:
-                        syll_parts = [mot]  # fallback: mot entier
+                        pass
+                    counter[0] += 1
+                    pos += len(mot[pos:pos+L]) if pos+L <= len(mot) else len(mot[pos:])
 
-                    # Recomposer en respectant la graphie d'origine (tentative)
-                    # syll_parts est liste de syllabes (en graphie normalisée)
-                    # On parcourt mot et on tente d'aligner chaque syllabe sur la chaîne originale.
-                    pos = 0
-                    for si, syl in enumerate(syll_parts):
-                        # chercher syl dans mot (heuristique) à partir de pos
-                        # on utilise une recherche insensible aux accents (on compare mot_norm)
-                        target = syl
-                        # calculer la longueur approximative en caractères dans mot
-                        # on tente de consommer progressivement
-                        # fallback : prendre une tranche égale en longueur
-                        if si < len(syll_parts) - 1:
-                            # essayer de trouver la correspondance exacte dans la portion restante
-                            rem_norm = mot_norm[pos:]
-                            idx = rem_norm.find(target)
-                            if idx != -1:
-                                real_idx = pos + idx
-                                # map to original indices: approx by lengths
-                                real_start = sum(len(x) for x in mot[:real_idx]) if False else pos  # best-effort
-                            else:
-                                # fallback heuristique
-                                real_start = pos
-                        else:
-                            real_start = pos
+                # Si reste des caractères (rare)
+                if pos < len(mot):
+                    rest = mot[pos:]
+                    if spaces_after and si == len(syll_parts) - 1:
+                        rest = rest + spaces_after
+                    run = p.add_run(rest)
+                    try:
+                        run.font.color.rgb = COUL_SYLL[counter[0] % len(COUL_SYLL)]
+                    except Exception:
+                        pass
+                    counter[0] += 1
 
-                        # naive: découpage par longueur proportionnelle
-                        # On prend pour la syllabe la même longueur que 'target' en caractères approximatifs
-                        L = len(target)
-                        part = mot[pos:pos+L] if pos+L <= len(mot) else mot[pos:]
-                        # ajouter run coloré pour 'part'
-                        run = p.add_run(part)
-                        # appliquer couleur alternée
-                        color = COUL_SYLL[counter[0] % len(COUL_SYLL)]
-                        try:
-                            run.font.color.rgb = color
-                        except Exception:
-                            pass
-                        counter[0] += 1
-                        pos += len(part)
-
-                    # si reste des caractères (rare), les ajouter
-                    if pos < len(mot):
-                        rest = mot[pos:]
-                        run = p.add_run(rest)
-                        try:
-                            run.font.color.rgb = COUL_SYLL[counter[0] % len(COUL_SYLL)]
-                        except Exception:
-                            pass
-                        counter[0] += 1
-
-                    i += len(mot)
-                else:
-                    # caractère isolé (non matched by WORD_PATTERN) => ajouter tel quel
-                    p.add_run(texte[i])
-                    i += 1
+                # Avancer i pour inclure le mot ET les espaces après
+                i = next_pos
+                spaces_before = ''  # Réinitialiser
+            else:
+                # caractère isolé (non matched by WORD_PATTERN) => ajouter tel quel
+                p.add_run(texte[i])
+                i += 1
