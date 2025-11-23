@@ -20,6 +20,8 @@ def apply_position_numbers(doc):
       couleur d'origine n'est PAS restaurée pour les chiffres afin que la
       coloration par position reste visible.
     """
+    from core.utils import _iter_textbox_paragraphs
+    
     containers = [doc]
     for table in doc.tables:
         containers.extend(table._cells)
@@ -27,8 +29,13 @@ def apply_position_numbers(doc):
         if hasattr(shape, 'text_frame') and shape.text_frame:
             containers.append(shape.text_frame)
 
+    # Collecter tous les paragraphes
+    all_paragraphs = []
     for container in containers:
-        for p in container.paragraphs:
+        all_paragraphs.extend(container.paragraphs)
+    all_paragraphs.extend(_iter_textbox_paragraphs(doc))
+    
+    for p in all_paragraphs:
             if not p.text.strip():
                 continue
             texte = p.text

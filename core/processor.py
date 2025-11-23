@@ -48,6 +48,124 @@ from .numbers_position import apply_position_numbers
 from .numbers_multicolor import apply_multicolor_numbers
 
 
+def _convert_vml_to_drawingml(docx_path: str):
+    """
+    Conversion des zones de texte VML en DrawingML moderne (toutes les occurrences).
+    Deux passes : collecte des cibles puis remplacement pour éviter les effets d'itération.
+    """
+    import zipfile, tempfile, shutil, re
+    from lxml import etree
+
+    temp_dir = tempfile.mkdtemp()
+    try:
+        with zipfile.ZipFile(docx_path, 'r') as zin:
+            zin.extractall(temp_dir)
+        doc_xml = os.path.join(temp_dir, 'word', 'document.xml')
+        tree = etree.parse(doc_xml)
+        root = tree.getroot()
+
+        # Namespaces (utiliser URI sans accolades pour création)
+        v_uri = 'urn:schemas-microsoft-com:vml'
+        w_uri = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+        wp_uri = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing'
+        a_uri = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+        wps_uri = 'http://schemas.microsoft.com/office/word/2010/wordprocessingShape'
+
+        targets = []  # (parent, index, style, txbx_content)
+
+        # Collecte
+        for parent in root.iter():
+            children = list(parent)
+            for idx, child in enumerate(children):
+                if child.tag != f'{{{w_uri}}}pict':
+                    continue
+                vml_shape = child.find(f'.//{{{v_uri}}}shape')
+                if vml_shape is None:
+                    continue
+                # Chercher v:textbox + w:txbxContent
+                v_textbox = vml_shape.find(f'./{{{v_uri}}}textbox')
+                if v_textbox is None:
+                    continue
+                txbx_content = v_textbox.find(f'{{{w_uri}}}txbxContent')
+                if txbx_content is None:
+                    continue
+                style = vml_shape.get('style', '')
+                if not all(k in style for k in ('margin-left','margin-top','width','height')):
+                    continue
+                targets.append((parent, idx, style, txbx_content))
+
+        if not targets:
+            print('  Aucune textbox VML trouvée')
+            return
+
+        modifications = 0
+        shape_id = 1
+        for parent, idx, style, txbx_content in targets:
+            ml = re.search(r'margin-left:([0-9.]+)pt', style)
+            mt = re.search(r'margin-top:([0-9.]+)pt', style)
+            w_match = re.search(r'width:([0-9.]+)pt', style)
+            h_match = re.search(r'height:([0-9.]+)pt', style)
+            if not (ml and mt and w_match and h_match):
+                continue
+            ml_pt = float(ml.group(1)); mt_pt = float(mt.group(1))
+            w_pt = float(w_match.group(1)); h_pt_orig = float(h_match.group(1))
+            h_pt = h_pt_orig * 5.0
+            # EMUs
+            factor = 914400/72.0
+            ml_emu = int(ml_pt * factor); mt_emu = int(mt_pt * factor)
+            w_emu = int(w_pt * factor); h_emu = int(h_pt * factor)
+
+            drawing = etree.Element(f'{{{w_uri}}}drawing')
+            anchor = etree.SubElement(drawing, f'{{{wp_uri}}}anchor', behindDoc='1', distT='0', distB='0', distL='0', distR='0',
+                                       simplePos='0', locked='0', layoutInCell='0', allowOverlap='1', relativeHeight='5')
+            etree.SubElement(anchor, f'{{{wp_uri}}}simplePos', x='0', y='0')
+            pos_h = etree.SubElement(anchor, f'{{{wp_uri}}}positionH', relativeFrom='page')
+            etree.SubElement(pos_h, f'{{{wp_uri}}}posOffset').text = str(ml_emu)
+            pos_v = etree.SubElement(anchor, f'{{{wp_uri}}}positionV', relativeFrom='paragraph')
+            etree.SubElement(pos_v, f'{{{wp_uri}}}posOffset').text = str(mt_emu)
+            etree.SubElement(anchor, f'{{{wp_uri}}}extent', cx=str(w_emu), cy=str(h_emu))
+            etree.SubElement(anchor, f'{{{wp_uri}}}effectExtent', l='3810', t='3810', r='2540', b='2540')
+            etree.SubElement(anchor, f'{{{wp_uri}}}wrapNone')
+            etree.SubElement(anchor, f'{{{wp_uri}}}docPr', id=str(shape_id), name=f'Textbox {shape_id}')
+
+            graphic = etree.SubElement(anchor, f'{{{a_uri}}}graphic')
+            gdata = etree.SubElement(graphic, f'{{{a_uri}}}graphicData', uri='http://schemas.microsoft.com/office/word/2010/wordprocessingShape')
+            wsp = etree.SubElement(gdata, f'{{{wps_uri}}}wsp')
+            etree.SubElement(wsp, f'{{{wps_uri}}}cNvSpPr')
+            sp_pr = etree.SubElement(wsp, f'{{{wps_uri}}}spPr')
+            xfrm = etree.SubElement(sp_pr, f'{{{a_uri}}}xfrm')
+            etree.SubElement(xfrm, f'{{{a_uri}}}off', x='0', y='0')
+            etree.SubElement(xfrm, f'{{{a_uri}}}ext', cx=str(w_emu), cy=str(h_emu))
+            geom = etree.SubElement(sp_pr, f'{{{a_uri}}}prstGeom', prst='rect')
+            etree.SubElement(geom, f'{{{a_uri}}}avLst')
+            etree.SubElement(sp_pr, f'{{{a_uri}}}noFill')
+            ln = etree.SubElement(sp_pr, f'{{{a_uri}}}ln', w='6480')
+            sf = etree.SubElement(ln, f'{{{a_uri}}}solidFill')
+            etree.SubElement(sf, f'{{{a_uri}}}srgbClr', val='000000')
+            etree.SubElement(ln, f'{{{a_uri}}}round')
+            txbx = etree.SubElement(wsp, f'{{{wps_uri}}}txbx')
+            txbx.append(txbx_content)
+            body_pr = etree.SubElement(wsp, f'{{{wps_uri}}}bodyPr', lIns='0', rIns='0', tIns='0', bIns='0', anchor='t')
+            etree.SubElement(body_pr, f'{{{a_uri}}}noAutofit')
+
+            # Remplacement
+            parent[idx] = drawing
+            modifications += 1
+            print(f"  Textbox {modifications} convertie: {w_pt:.1f}×{h_pt_orig:.1f}pt VML → {w_pt:.1f}×{h_pt:.1f}pt DrawingML")
+            shape_id += 1
+
+        if modifications:
+            print(f"  → {modifications} textbox(es) convertie(s) VML→DrawingML")
+            tree.write(doc_xml, xml_declaration=True, encoding='UTF-8', standalone=True)
+            with zipfile.ZipFile(docx_path, 'w', zipfile.ZIP_DEFLATED) as zout:
+                for rdir, dirs, files in os.walk(temp_dir):
+                    for f in files:
+                        p = os.path.join(rdir, f)
+                        zout.write(p, os.path.relpath(p, temp_dir))
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 def _save_output_and_open(doc: Document, input_filepath: str, open_after: bool = True) -> str:
     """
     Sauvegarde le document dans un sous-dossier 'DYS' à côté du fichier d'entrée,
@@ -70,6 +188,13 @@ def _save_output_and_open(doc: Document, input_filepath: str, open_after: bool =
 
     # Sauvegarde
     doc.save(output)
+    
+    # Post-traitement: conversion VML → DrawingML pour textboxes
+    try:
+        _convert_vml_to_drawingml(output)
+    except Exception as e:
+        print(f"Erreur conversion zones de texte: {e}")
+    
     update_progress(100, f"Terminé → {os.path.basename(output)}")
 
     # Ouverture automatique (si demandée)

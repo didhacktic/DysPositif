@@ -1,40 +1,38 @@
-# Environnements virtuels → restent locaux, jamais sur GitHub
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
 venv/
-.venv/
 env/
 ENV/
 
-# Fichiers de test
+# Outputs
+output/
+outputs/
+*.pdf
+*.docx
+*.html
+
+# Local directories (tests et scripts de développement)
+scripts/
 Fichiers_test/
 
-# Cache Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Éditeurs
+# IDE
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# Système
+# OS
 .DS_Store
 Thumbs.db
-Desktop.ini
 
-# Temporaires
-*.tmp
+# Logs
 *.log
-*.bak
-
-# Credentials Adobe → NE JAMAIS COMMIT
-pdfservices-api-credentials.json
-utils/pdfservices-api-credentials.json
-
-# Scripts locaux (diagnostic / tests) à ne pas versionner
-scripts/
-
-# Dys’Positif logs
-.cache/
-~/.cache/dys_positif/
-dys_log.txt

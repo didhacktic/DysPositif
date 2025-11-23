@@ -352,11 +352,16 @@ def apply_mute_letters(doc):
 
     Protection : si spaCy détecte PROPN '-' PROPN on désactive le mask pour la plage.
     """
+    from core.utils import _iter_textbox_paragraphs
+    
     counter = 0
 
     HYPHENS = {"-", "–", "—", "\u2010", "\u2011"}
 
-    for paragraph in doc.paragraphs:
+    # Inclure paragraphes du body ET des zones de texte
+    all_paragraphs = list(doc.paragraphs) + list(_iter_textbox_paragraphs(doc))
+    
+    for paragraph in all_paragraphs:
         runs = list(paragraph.runs)
         if not runs:
             continue
